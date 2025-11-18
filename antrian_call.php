@@ -32,8 +32,9 @@ if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== tru
 }
 
 $allowed_roles = ['Super Admin', 'Front Office', 'Dokter'];
-if (!in_array($_SESSION['role'] ?? '', $allowed_roles)) {
-    echo '<!DOCTYPE html><html lang="id"><head><title>Akses Ditolak</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"></head><body class="bg-light d-flex align-items-center justify-content-center" style="min-height: 100vh;"><div class="card p-5 shadow-lg"><h3 class="text-danger">Akses Ditolak 🛑</h3><p>Maaf, peran Anda (**' . htmlspecialchars($_SESSION['role'] ?? 'Guest') . '**), tidak diizinkan mengakses halaman ini.</p><a href="login.php" class="btn btn-primary">Halaman Login</a></div></body></html>';
+$current_role = $_SESSION['role'] ?? 'Guest'; // Simpan role ke variabel
+if (!in_array($current_role, $allowed_roles)) {
+    echo '<!DOCTYPE html><html lang="id"><head><title>Akses Ditolak</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"></head><body class="bg-light d-flex align-items-center justify-content-center" style="min-height: 100vh;"><div class="card p-5 shadow-lg"><h3 class="text-danger">Akses Ditolak 🛑</h3><p>Maaf, peran Anda (**' . htmlspecialchars($current_role) . '**), tidak diizinkan mengakses halaman ini.</p><a href="login.php" class="btn btn-primary">Halaman Login</a></div></body></html>';
     // Penting: Tutup koneksi jika dieksekusi di sini
     if (isset($conn)) mysqli_close($conn); 
     exit();
@@ -41,7 +42,7 @@ if (!in_array($_SESSION['role'] ?? '', $allowed_roles)) {
 
 // Definisikan variabel sesi untuk Navbar
 $nama_lengkap_admin = htmlspecialchars($_SESSION['nama_lengkap'] ?? 'User');
-$role_admin = htmlspecialchars($_SESSION['role'] ?? 'Guest');
+$role_admin = htmlspecialchars($current_role); // Gunakan $current_role yang sudah disiapkan
 
 // --- MENU ITEMS UNTUK NAV BAR (Contoh Navigasi Cepat) ---
 $menu_items = [
@@ -80,27 +81,36 @@ if (isset($_GET['action']) && isset($_GET['antrian_id'])) {
     $antrian_id = (int)$_GET['antrian_id'];
     $new_status = "";
     $update_time = "";
+    $is_allowed = false; // Flag untuk mengecek izin aksi
 
-    if ($action === 'call') {
+    if ($action === 'call' && in_array($current_role, ['Super Admin', 'Front Office'])) {
+        // Aksi Panggil: Diizinkan untuk Super Admin dan Front Office
         $new_status = 'Dipanggil';
         $update_time = ", waktu_dipanggil = NOW()";
-    } elseif ($action === 'finish') {
-        $new_status = 'Selesai';
-    } elseif ($action === 'skip') {
+        $is_allowed = true;
+    } elseif ($action === 'skip' && in_array($current_role, ['Super Admin', 'Front Office'])) {
+        // Aksi Tidak Hadir/Skip: Diizinkan untuk Super Admin dan Front Office
         $new_status = 'Tidak Hadir';
-    } elseif ($action === 'serve') {
+        $is_allowed = true;
+    } elseif ($action === 'serve' && in_array($current_role, ['Super Admin', 'Dokter'])) {
+        // Aksi Sedang Periksa: Diizinkan untuk Super Admin dan Dokter
         $new_status = 'Sedang Periksa';
+        $is_allowed = true;
+    } elseif ($action === 'finish' && in_array($current_role, ['Super Admin', 'Dokter'])) {
+        // Aksi Selesai: **Hanya Diizinkan untuk Super Admin dan Dokter**
+        $new_status = 'Selesai';
+        $is_allowed = true;
     }
 
-    if (!empty($new_status)) {
+    if ($is_allowed && !empty($new_status)) {
         // Query menggunakan variabel $conn
         $sql_update = "UPDATE antrian SET status_antrian = '$new_status' $update_time WHERE antrian_id = $antrian_id";
         if (mysqli_query($conn, $sql_update)) {
             $success_message = "Status antrian **$new_status** berhasil diperbarui.";
             
             // --- PERBAIKAN: Logika Redirect berdasarkan Role ---
-            if ($role_admin === 'Dokter') {
-                // Redirect Dokter kembali ke Dashboard mereka
+            if ($current_role === 'Dokter') {
+                // Redirect Dokter kembali ke Dashboard mereka (Asumsi dokter_dashboard.php ada)
                 header("Location: dokter_dashboard.php?success_msg=" . urlencode($success_message));
                 exit();
             } else {
@@ -113,6 +123,8 @@ if (isset($_GET['action']) && isset($_GET['antrian_id'])) {
         } else {
             $error_message = "Gagal mengubah status antrian: " . mysqli_error($conn);
         }
+    } elseif (!$is_allowed) {
+        $error_message = "Akses ditolak. Peran Anda (**$current_role**) tidak diizinkan melakukan aksi '$action'.";
     }
 }
 
@@ -327,21 +339,51 @@ if (isset($conn)) mysqli_close($conn);
                                                     <td><?php echo get_status_badge_antrian($row['status_antrian']); ?></td>
                                                     <td><?php echo $row['waktu_dipanggil'] ? date('H:i', strtotime($row['waktu_dipanggil'])) : '-'; ?></td>
                                                     <td class="text-center text-nowrap">
-                                                        <?php if ($row['status_antrian'] === 'Menunggu'): ?>
-                                                            <a href="antrian_call.php?action=call&antrian_id=<?php echo $row['antrian_id']; ?>&poli_id=<?php echo $poli_id_filter; ?>" class="btn btn-sm btn-success me-1">Panggil</a>
-                                                            <a href="antrian_call.php?action=skip&antrian_id=<?php echo $row['antrian_id']; ?>&poli_id=<?php echo $poli_id_filter; ?>" onclick="return confirm('Tandai sebagai Tidak Hadir?')" class="btn btn-sm btn-danger">Skip</a>
-                                                        
-                                                        <?php elseif ($row['status_antrian'] === 'Dipanggil'): ?>
-                                                            <a href="antrian_call.php?action=serve&antrian_id=<?php echo $row['antrian_id']; ?>&poli_id=<?php echo $poli_id_filter; ?>" class="btn btn-sm btn-primary">Sedang Periksa</a>
-                                                            <a href="antrian_call.php?action=call&antrian_id=<?php echo $row['antrian_id']; ?>&poli_id=<?php echo $poli_id_filter; ?>" class="btn btn-sm btn-outline-secondary ms-1">Ulangi Panggil</a>
-                                                        
-                                                        <?php elseif ($row['status_antrian'] === 'Sedang Periksa'): ?>
-                                                            <a href="antrian_call.php?action=finish&antrian_id=<?php echo $row['antrian_id']; ?>&poli_id=<?php echo $poli_id_filter; ?>" onclick="return confirm('Yakin ingin menyelesaikan antrian ini?')" class="btn btn-sm btn-secondary">Selesaikan Antrian</a>
-                                                            <a href="antrian_call.php?action=call&antrian_id=<?php echo $row['antrian_id']; ?>&poli_id=<?php echo $poli_id_filter; ?>" class="btn btn-sm btn-outline-warning ms-1">Ulangi Panggil</a>
-                                                        
-                                                        <?php else: ?>
-                                                            <span class="text-muted">N/A</span>
-                                                        <?php endif; ?>
+                                                        <?php 
+                                                            $antrian_id_url = $row['antrian_id'];
+                                                            $poli_id_filter_url = $poli_id_filter; // Pertahankan filter saat redirect
+                                                            
+                                                            // --- LOGIKA TAMPILAN TOMBOL BERDASARKAN STATUS DAN ROLE ---
+                                                            if ($row['status_antrian'] === 'Menunggu') {
+                                                                if (in_array($current_role, ['Super Admin', 'Front Office'])) {
+                                                                    // Front Office & Super Admin: Boleh Panggil dan Skip
+                                                                    echo '<a href="antrian_call.php?action=call&antrian_id='.$antrian_id_url.'&poli_id='.$poli_id_filter_url.'" class="btn btn-sm btn-success me-1">Panggil</a>';
+                                                                    echo '<a href="antrian_call.php?action=skip&antrian_id='.$antrian_id_url.'&poli_id='.$poli_id_filter_url.'" onclick="return confirm(\'Tandai sebagai Tidak Hadir?\')" class="btn btn-sm btn-danger">Skip</a>';
+                                                                } else {
+                                                                    echo '<span class="text-muted">Menunggu Panggilan FO</span>';
+                                                                }
+
+                                                            } elseif ($row['status_antrian'] === 'Dipanggil') {
+                                                                if (in_array($current_role, ['Super Admin', 'Dokter'])) {
+                                                                    // Dokter & Super Admin: Boleh Sedang Periksa
+                                                                    echo '<a href="antrian_call.php?action=serve&antrian_id='.$antrian_id_url.'&poli_id='.$poli_id_filter_url.'" class="btn btn-sm btn-primary">Sedang Periksa</a>';
+                                                                }
+                                                                if (in_array($current_role, ['Super Admin', 'Front Office'])) {
+                                                                    // Front Office & Super Admin: Boleh Ulangi Panggil
+                                                                    echo '<a href="antrian_call.php?action=call&antrian_id='.$antrian_id_url.'&poli_id='.$poli_id_filter_url.'" class="btn btn-sm btn-outline-secondary ms-1">Ulangi Panggil</a>';
+                                                                }
+                                                                if (!in_array($current_role, ['Super Admin', 'Dokter', 'Front Office'])) {
+                                                                    echo '<span class="text-muted">Pasien Dipanggil</span>';
+                                                                }
+
+
+                                                            } elseif ($row['status_antrian'] === 'Sedang Periksa') {
+                                                                if (in_array($current_role, ['Super Admin', 'Dokter'])) {
+                                                                    // Dokter & Super Admin: Boleh Selesaikan Antrian
+                                                                    echo '<a href="antrian_call.php?action=finish&antrian_id='.$antrian_id_url.'&poli_id='.$poli_id_filter_url.'" onclick="return confirm(\'Yakin ingin menyelesaikan antrian ini?\')" class="btn btn-sm btn-secondary">Selesaikan Antrian</a>';
+                                                                }
+                                                                if (in_array($current_role, ['Super Admin', 'Front Office'])) {
+                                                                    // Front Office & Super Admin: Boleh Ulangi Panggil
+                                                                    echo '<a href="antrian_call.php?action=call&antrian_id='.$antrian_id_url.'&poli_id='.$poli_id_filter_url.'" class="btn btn-sm btn-outline-warning ms-1">Ulangi Panggil</a>';
+                                                                }
+                                                                if (!in_array($current_role, ['Super Admin', 'Dokter', 'Front Office'])) {
+                                                                    echo '<span class="text-muted">Sedang Periksa</span>';
+                                                                }
+
+                                                            } else {
+                                                                echo '<span class="text-muted">N/A</span>';
+                                                            }
+                                                        ?>
                                                     </td>
                                                 </tr>
                                             <?php endforeach; ?>
