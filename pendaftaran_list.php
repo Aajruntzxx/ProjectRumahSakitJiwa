@@ -10,7 +10,7 @@ if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== tru
 // Cek Role (hanya Super Admin atau Front Office yang diizinkan)
 $allowed_roles = ['Super Admin', 'Front Office'];
 if (!in_array($_SESSION['role'], $allowed_roles)) {
-    echo '<!DOCTYPE html><html lang="id"><head><title>Akses Ditolak</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"></head><body class="bg-light d-flex align-items-center justify-content-center" style="min-height: 100vh;"><div class="card p-5 shadow-lg"><h3 class="text-danger">Akses Ditolak 🛑</h3><p>Maaf, peran Anda (**' . $_SESSION['role'] . '**), tidak diizinkan mengakses halaman ini.</p><a href="pasien_list.php" class="btn btn-primary">Kembali</a></div></body></html>';
+    echo '<!DOCTYPE html><html lang="id"><head><title>Akses Ditolak</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"></head><body class="bg-light d-flex align-items-center justify-content-center" style="min-height: 100vh;"><div class="card p-5 shadow-lg"><h3 class="text-danger">Akses Ditolak 🛑</h3><p>Maaf, peran Anda (**' . htmlspecialchars($_SESSION['role']) . '**), tidak diizinkan mengakses halaman ini.</p><a href="pasien_list.php" class="btn btn-primary">Kembali</a></div></body></html>';
     exit();
 }
 
@@ -30,7 +30,7 @@ $menu_items = [
 // --- END MENU ITEMS ---
 
 $error_message = "";
-$total_pendaftaran = 0; // Variabel baru untuk menyimpan total
+$total_pendaftaran = 0; // Variabel untuk menyimpan total
 
 // =========================================================================
 // LOGIKA HAPUS DENGAN PERBAIKAN FOREIGN KEY
@@ -60,7 +60,7 @@ if (isset($_GET['delete_id'])) {
 // =========================================================================
 
 
-// Logika Verifikasi/Update Status Pendaftaran (Tetap dipertahankan)
+// Logika Verifikasi/Update Status Pendaftaran (Modifikasi Antrian Per Poli)
 if (isset($_GET['action']) && isset($_GET['id'])) {
     $action = escape_input($conn, $_GET['action']);
     $id = (int)$_GET['id'];
@@ -74,8 +74,13 @@ if (isset($_GET['action']) && isset($_GET['id'])) {
     
     if (!empty($new_status)) {
         
-        // 1. Ambil data pendaftaran (pasien_id, poli_id, tgl_rencana_periksa)
-        $sql_get_data = "SELECT pasien_id, poli_id, tgl_rencana_periksa FROM pendaftaran WHERE pendaftaran_id = $id";
+        // 1. Ambil data pendaftaran (pasien_id, poli_id, tgl_rencana_periksa) DAN KODE ANTRIAN POLI
+        // Menambahkan JOIN ke tabel 'poli' untuk mendapatkan 'kode_antrian'
+        $sql_get_data = "SELECT p.pasien_id, p.poli_id, p.tgl_rencana_periksa, o.kode_antrian 
+                         FROM pendaftaran p
+                         JOIN poli o ON p.poli_id = o.poli_id 
+                         WHERE p.pendaftaran_id = $id";
+        
         $res_data = mysqli_query($conn, $sql_get_data);
         $data = mysqli_fetch_assoc($res_data);
         
@@ -85,19 +90,25 @@ if (isset($_GET['action']) && isset($_GET['id'])) {
             $tgl_layanan = $data['tgl_rencana_periksa'];
             $poli_id = $data['poli_id'];
             $pendaftaran_id = $id;
+            // Ambil Kode Antrian Poli yang baru ditambahkan
+            $kode_antrian_poli = $data['kode_antrian']; 
 
             // 2. Hitung Nomor Antrian Terakhir untuk Poli dan Tanggal tersebut
+            // Query tetap menghitung angka terakhir, tidak peduli kodenya
             $sql_max_antrian = "SELECT MAX(CAST(SUBSTRING(nomor_antrian, 2) AS SIGNED)) AS max_num 
-                                FROM antrian 
-                                WHERE poli_id = $poli_id AND tgl_layanan = '$tgl_layanan'";
+                                 FROM antrian 
+                                 WHERE poli_id = $poli_id AND tgl_layanan = '$tgl_layanan'";
             
             $res_max = mysqli_query($conn, $sql_max_antrian);
             $max_num = mysqli_fetch_assoc($res_max)['max_num'];
             
             $next_num = $max_num ? $max_num + 1 : 1;
-            $nomor_antrian_baru = "A" . str_pad($next_num, 3, '0', STR_PAD_LEFT); // Cth: A001, A002
+            
+            // 3. GENERASI NOMOR ANTRIAN BARU DENGAN KODE POLI
+            // Contoh: A001, B001, C001, dst.
+            $nomor_antrian_baru = $kode_antrian_poli . str_pad($next_num, 3, '0', STR_PAD_LEFT); 
 
-            // 3. Masukkan entri baru ke tabel antrian
+            // 4. Masukkan entri baru ke tabel antrian
             $sql_insert_antrian = "INSERT INTO antrian (pendaftaran_id, poli_id, tgl_layanan, nomor_antrian, status_antrian)
                                    VALUES ($pendaftaran_id, $poli_id, '$tgl_layanan', '$nomor_antrian_baru', 'Menunggu')";
             
@@ -107,7 +118,7 @@ if (isset($_GET['action']) && isset($_GET['id'])) {
             }
         }
         
-        // 4. Update status pendaftaran utama (Hanya jika tidak ada error antrian)
+        // 5. Update status pendaftaran utama (Hanya jika tidak ada error antrian)
         if (empty($error_message) || !$antrian_success) {
             $sql_update = "UPDATE pendaftaran SET status_pendaftaran = '$new_status' WHERE pendaftaran_id = $id";
             if (mysqli_query($conn, $sql_update)) {
@@ -233,19 +244,19 @@ if (isset($_GET['action']) && isset($_GET['id'])) {
                     </div>
 
                     <?php
-                    // Query dengan JOIN untuk menampilkan nama pasien dan nama poli
-                    $sql = "SELECT p.*, s.nama_lengkap AS nama_pasien, s.no_rekam_medis, o.nama_poli 
+                    // Query dengan JOIN untuk menampilkan nama pasien, nama poli, dan nomor antrian jika ada
+                    $sql = "SELECT p.*, s.nama_lengkap AS nama_pasien, s.no_rekam_medis, o.nama_poli, a.nomor_antrian
                             FROM pendaftaran p
                             JOIN pasien s ON p.pasien_id = s.pasien_id
                             JOIN poli o ON p.poli_id = o.poli_id
+                            LEFT JOIN antrian a ON p.pendaftaran_id = a.pendaftaran_id
                             ORDER BY p.tgl_waktu_input DESC";
                     $result = mysqli_query($conn, $sql);
 
                     if ($result && mysqli_num_rows($result) > 0) {
-                        // **SIMPAN JUMLAH BARIS SEBELUM MEMPROSES DAN MEMBEBASKAN HASIL**
+                        // SIMPAN JUMLAH BARIS SEBELUM MEMPROSES DAN MEMBEBASKAN HASIL
                         $total_pendaftaran = mysqli_num_rows($result);
                         
-                        // --- DEFINISI FUNGSI DIPINDAHKAN KE LUAR LOOP ---
                         // Helper function untuk Badge Status
                         function get_status_badge($status) {
                             switch ($status) {
@@ -256,19 +267,22 @@ if (isset($_GET['action']) && isset($_GET['id'])) {
                                 default: return '<span class="badge bg-secondary">' . $status . '</span>';
                             }
                         }
-                        // --- END DEFINISI FUNGSI ---
-
+                        
                         echo '<div class="table-responsive">';
                         echo '<table class="table table-bordered table-striped table-hover align-middle">';
-                        echo '<thead class="table-dark"><tr><th>ID</th><th>Pasien (RM)</th><th>Poli</th><th>Tgl Rencana</th><th>Jenis</th><th>Status</th><th>Tgl Input</th><th class="text-center">Aksi</th></tr></thead>';
+                        echo '<thead class="table-dark"><tr><th>ID</th><th>Pasien (RM)</th><th>Poli</th><th>Antrian</th><th>Tgl Rencana</th><th>Jenis</th><th>Status</th><th>Tgl Input</th><th class="text-center">Aksi</th></tr></thead>';
                         echo '<tbody>';
                         
                         while($row = mysqli_fetch_assoc($result)) {
                             
+                            // Tampilkan Nomor Antrian
+                            $nomor_antrian = $row['nomor_antrian'] ? '<span class="badge bg-info text-dark fw-bold">' . htmlspecialchars($row['nomor_antrian']) . '</span>' : 'N/A';
+
                             echo "<tr>";
                             echo "<td>" . $row['pendaftaran_id'] . "</td>";
                             echo "<td>" . htmlspecialchars($row['nama_pasien']) . " (<small class='text-muted'>" . htmlspecialchars($row['no_rekam_medis'] ?? '-') . "</small>)</td>";
                             echo "<td>" . htmlspecialchars($row['nama_poli']) . "</td>";
+                            echo "<td>" . $nomor_antrian . "</td>"; // Kolom Antrian Baru
                             echo "<td>" . $row['tgl_rencana_periksa'] . "</td>";
                             echo "<td><span class='badge bg-light text-dark border'>" . $row['jenis_pendaftaran'] . "</span></td>";
                             echo "<td>" . get_status_badge($row['status_pendaftaran']) . "</td>";
@@ -284,13 +298,12 @@ if (isset($_GET['action']) && isset($_GET['id'])) {
                                 echo "<a href='pendaftaran_list.php?action=cancel&id=" . $row['pendaftaran_id'] . "' onclick='return confirm(\"Batalkan pendaftaran ini?\")' class='btn btn-sm btn-danger me-1'>Batalkan</a>";
                             } elseif ($row['status_pendaftaran'] === 'Terverifikasi') {
                                 // Hanya Batalkan
-                                echo "<a href='pendaftaran_list.php?action=cancel&id=" . $row['pendaftaran_id'] . "' onclick='return confirm(\"Batalkan pendaftaran ini?\")' class='btn btn-sm btn-danger me-1'>Batalkan</a>";
+                                echo "<a href='pendaftaran_list.php?action=cancel&id=" . $row['pendaftaran_id'] . "' onclick='return confirm(\"Batalkan pendaftaran ini? Antrian terkait juga akan dibatalkan.\")' class='btn btn-sm btn-danger me-1'>Batalkan</a>";
                             } else {
                                 echo "<span class='text-muted'>Aksi Selesai</span>";
                             }
                             
-                            // Tombol Hapus (selalu tersedia jika belum diproses, atau untuk admin)
-                            // Menggunakan script PHP yang diperbaiki (dengan penghapusan antrian terkait)
+                            // Tombol Hapus (dengan perbaikan Foreign Key)
                             echo "<a href='pendaftaran_list.php?delete_id=" . $row['pendaftaran_id'] . "' onclick='return confirm(\"Yakin hapus pendaftaran ini secara permanen? Antrian terkait juga akan dihapus.\")' class='btn btn-sm btn-secondary ms-1'>Hapus</a>";
 
                             echo "</td>";

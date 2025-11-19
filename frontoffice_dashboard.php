@@ -61,8 +61,15 @@ if ($result_selesai) mysqli_free_result($result_selesai);
 // Daftar menu utama Front Office
 $menu_items = [
     [
+        'title' => 'Dashboard',
+        'icon' => 'bi-house-door-fill',
+        'link' => 'frontoffice_dashboard.php',
+        'target' => '_self',
+        'active' => true // Tambahkan penanda aktif untuk Dashboard
+    ],
+    [
         'title' => 'Daftar Pasien',
-        'desc' => 'Kelola data registrasi dan informasi dasar pasien.',
+        'desc' => 'Kelola data registrasi pasien.',
         'icon' => 'bi-people-fill',
         'color' => 'primary',
         'link' => 'pasien_list.php',
@@ -70,7 +77,7 @@ $menu_items = [
     ],
     [
         'title' => 'Manajemen Pendaftaran',
-        'desc' => 'Input pendaftaran baru dan verifikasi pendaftaran online.',
+        'desc' => 'Input/Verifikasi pendaftaran.',
         'icon' => 'bi-file-earmark-spreadsheet-fill',
         'color' => 'info',
         'link' => 'pendaftaran_list.php',
@@ -78,7 +85,7 @@ $menu_items = [
     ],
     [
         'title' => 'Pemanggilan Antrian',
-        'desc' => 'Panggil antrian pasien yang sudah terverifikasi hari ini.',
+        'desc' => 'Panggil antrian pasien.',
         'icon' => 'bi-telephone-fill',
         'color' => 'success',
         'link' => 'antrian_call.php',
@@ -86,7 +93,7 @@ $menu_items = [
     ],
     [
         'title' => 'Layar Antrian Publik',
-        'desc' => 'Tampilkan status antrian saat ini di layar tunggu (Buka di tab baru).',
+        'desc' => 'Tampilkan status antrian (Tab Baru).',
         'icon' => 'bi-tv-fill',
         'color' => 'warning',
         'link' => 'antrian_display.php', 
@@ -94,13 +101,28 @@ $menu_items = [
     ],
     [
         'title' => 'Laporan Pendaftaran',
-        'desc' => 'Lihat rekapitulasi dan detail pendaftaran dalam rentang waktu tertentu.',
+        'desc' => 'Lihat rekapitulasi data.',
         'icon' => 'bi-bar-chart-fill',
         'color' => 'secondary',
         'link' => 'report.php',
         'target' => '_self'
     ],
 ];
+
+// Pisahkan Layar Antrian Publik agar ditaruh di tempat yang menonjol di konten utama
+$public_display_item = null;
+$internal_menu_items_dashboard = [];
+
+foreach ($menu_items as $item) {
+    if (isset($item['desc'])) { // Hanya item dengan 'desc' yang ditampilkan di card dashboard
+        if ($item['link'] === 'antrian_display.php') {
+            $public_display_item = $item;
+        } else {
+            $internal_menu_items_dashboard[] = $item;
+        }
+    }
+}
+
 
 // Tutup koneksi setelah selesai mengambil data
 mysqli_close($conn);
@@ -113,162 +135,315 @@ mysqli_close($conn);
     <title>Dashboard Front Office | RS Jiwa</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
     <style>
+        :root {
+            --sidebar-width: 250px;
+            --sidebar-bg: #1f2a38; /* Warna gelap yang sedikit lebih biru */
+            --sidebar-color: #f8f9fa;
+            --primary-highlight: #00bcd4; /* Warna highlight teal/cyan modern */
+            --main-font: 'Poppins', sans-serif; /* Font utama */
+            --heading-font: 'Montserrat', sans-serif; /* Font untuk judul */
+        }
         body {
+            overflow-x: hidden;
+            background-color: #f0f2f5; /* Latar belakang yang lebih modern */
+            font-family: var(--main-font); 
+        }
+        h1, h2, h3, h4, h5, h6 {
+            font-family: var(--heading-font);
+        }
+        
+        #wrapper {
             display: flex;
-            flex-direction: column;
+        }
+        
+        /* Gaya Sidebar */
+        #sidebar-wrapper {
             min-height: 100vh;
-            background-color: #f0f2f5;
-            padding-top: 56px;
+            margin-left: calc(var(--sidebar-width) * -1);
+            transition: margin 0.25s ease-out;
+            width: var(--sidebar-width);
+            background-color: var(--sidebar-bg);
+            color: var(--sidebar-color);
+            position: fixed;
+            z-index: 1030;
         }
-        .content-wrapper {
-            flex: 1;
-            padding-top: 30px;
-            padding-bottom: 30px;
+
+        #wrapper.toggled #sidebar-wrapper {
+            margin-left: 0;
         }
-        .header-section {
-            background: linear-gradient(135deg, #007bff, #17a2b8);
+        
+        #page-content-wrapper {
+            width: 100%;
+            padding: 20px;
+            padding-left: 20px;
+            transition: margin-left 0.25s ease-out;
+        }
+
+        /* Terapkan hanya pada layar besar */
+        @media (min-width: 992px) {
+            #sidebar-wrapper {
+                margin-left: 0;
+            }
+            #page-content-wrapper {
+                margin-left: var(--sidebar-width);
+                padding-left: 30px;
+            }
+            #wrapper.toggled #sidebar-wrapper {
+                margin-left: calc(var(--sidebar-width) * -1);
+            }
+            #wrapper.toggled #page-content-wrapper {
+                margin-left: 0;
+            }
+        }
+        
+        /* Gaya Navigasi Sidebar */
+        .sidebar-heading {
+            padding: 1.5rem 1.25rem; /* Padding lebih besar */
+            font-size: 1.3rem;
+            color: var(--primary-highlight);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            font-weight: 700;
+        }
+        .list-group-item {
+            border: none;
+            background-color: var(--sidebar-bg);
+            color: var(--sidebar-color);
+            padding: 0.8rem 1.25rem;
+            transition: background-color 0.2s, color 0.2s;
+            font-weight: 500;
+        }
+        .list-group-item:hover {
+            background-color: #2c3a50; 
             color: white;
-            padding: 20px 0;
-            border-radius: 10px;
+        }
+        .list-group-item.active-menu {
+            background-color: #2c3a50; 
+            color: var(--primary-highlight);
+            border-left: 5px solid var(--primary-highlight);
+            font-weight: 600;
+        }
+        
+        /* Gaya Konten */
+        .header-section {
+            /* Latar belakang yang lebih dinamis dan halus */
+            background: linear-gradient(45deg, #17a2b8, #007bff); 
+            color: white;
+            padding: 40px; /* Padding lebih besar */
+            border-radius: 15px; /* Sudut lebih melengkung */
             margin-bottom: 30px;
-            box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+            box-shadow: 0 10px 30px rgba(0, 123, 255, 0.25); /* Bayangan lebih dalam */
         }
-        .nav-link.active-menu {
-            border-bottom: 3px solid #ffc107;
-            font-weight: bold;
-        }
-        .menu-card {
+        
+        /* --- Gaya Card Statistik Modern --- */
+        .stat-card {
+            border-radius: 12px;
+            border: none;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.08); /* Bayangan yang lebih lembut */
             transition: transform 0.3s, box-shadow 0.3s;
-            border-radius: 10px;
-            border-left: 5px solid;
-            height: 100%; /* Penting untuk stat card */
+            overflow: hidden;
+            position: relative;
+            background-color: white !important;
+        }
+        .stat-card:hover {
+             transform: translateY(-3px);
+             box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+        }
+        .stat-card .card-body {
+            padding: 1.5rem;
+        }
+        .stat-icon-wrapper {
+            color: #fff;
+            padding: 10px;
+            border-radius: 8px;
+            line-height: 1;
+        }
+        .stat-value {
+            font-size: 2.8rem; 
+            font-family: var(--heading-font);
+            font-weight: 700;
+            color: #343a40; /* Warna gelap untuk angka */
+        }
+        .stat-title {
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: #6c757d;
+        }
+        
+        /* Warna untuk Stat Card */
+        .stat-card.primary .stat-icon-wrapper { background-color: #007bff; }
+        .stat-card.info .stat-icon-wrapper { background-color: #17a2b8; }
+        .stat-card.danger .stat-icon-wrapper { background-color: #dc3545; }
+        .stat-card.success .stat-icon-wrapper { background-color: #28a745; }
+
+
+        /* --- Gaya Menu Card Akses Cepat Modern --- */
+        .menu-card {
+            transition: all 0.3s ease-in-out;
+            border-radius: 12px;
+            border: 1px solid #e9ecef;
+            height: 100%;
+            background-color: white;
+            border-left: 8px solid; /* Border tebal di kiri */
         }
         .menu-card:hover {
             transform: translateY(-8px);
             box-shadow: 0 15px 30px rgba(0,0,0,0.15);
+            border-color: transparent !important; /* Hilangkan border standar saat hover */
         }
-        .stat-value {
-            font-size: 2.5rem;
-            font-weight: bold;
-            line-height: 1;
+        .menu-card .card-title {
+            font-weight: 600;
+            font-family: var(--heading-font);
+        }
+        .menu-card .card-text {
+            font-size: 0.9rem;
+        }
+        
+        /* Navbar */
+        .navbar-top {
+            background-color: white !important;
+            box-shadow: 0 4px 10px rgba(0,0,0,.05);
+            z-index: 1020;
+            border-bottom: 3px solid var(--primary-highlight);
+        }
+        
+        /* Custom Footer */
+        .footer {
+            background-color: #fff !important;
+            border-top: none !important;
+            box-shadow: 0 -2px 5px rgba(0,0,0,.02);
+            position: relative;
+            z-index: 1000;
         }
     </style>
 </head>
 <body>
 
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="frontoffice_dashboard.php">
-                <i class="bi bi-heart-pulse-fill me-2 text-info"></i> RS JIWA FO
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavFO" aria-controls="navbarNavFO" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNavFO">
-                
-                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                    <li class="nav-item">
-                        <a class="nav-link active-menu" aria-current="page" href="frontoffice_dashboard.php">
-                            <i class="bi bi-house-door-fill me-1"></i> Home
-                        </a>
-                    </li>
-                    <?php 
-                    $current_path = basename($_SERVER['PHP_SELF']); 
-                    foreach ($menu_items as $item): 
-                    ?>
-                        <li class="nav-item">
-                            <a class="nav-link" 
-                               href="<?php echo $item['link']; ?>" 
-                               target="<?php echo $item['target']; ?>">
-                                <i class="bi <?php echo $item['icon']; ?> me-1"></i> <?php echo $item['title']; ?>
-                            </a>
-                        </li>
-                    <?php endforeach; ?>
-                </ul>
+<div class="d-flex" id="wrapper">
 
-                <ul class="navbar-nav">
-                    <li class="nav-item">
-                        <span class="nav-link text-warning">Halo, <?php echo $nama_lengkap_admin; ?> (<?php echo $role_admin; ?>)</span>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link btn btn-sm btn-outline-danger ms-2" href="logout.php">Logout</a>
-                    </li>
-                </ul>
-            </div>
+    <div id="sidebar-wrapper">
+        <div class="sidebar-heading text-center">
+            <i class="bi bi-hospital-fill me-2"></i> RS JIWA FO
         </div>
-    </nav>
+        <div class="list-group list-group-flush">
+            <?php 
+            $current_file = basename($_SERVER['PHP_SELF']);
 
-    <div class="content-wrapper">
-        <div class="container">
+            foreach ($menu_items as $item): 
+                $is_active = ($item['link'] == $current_file) || (isset($item['active']) && $item['active'] && $current_file == 'frontoffice_dashboard.php');
+                $active_class = $is_active ? 'active-menu' : '';
+            ?>
+                <a href="<?php echo $item['link']; ?>" 
+                   class="list-group-item list-group-item-action <?php echo $active_class; ?>"
+                   target="<?php echo $item['target']; ?>">
+                    <i class="bi <?php echo $item['icon']; ?> me-2"></i> <?php echo $item['title']; ?>
+                </a>
+            <?php endforeach; ?>
+        </div>
+        <div class="p-3 mt-auto" style="position: absolute; bottom: 0; width: 100%;">
+             <a class="btn btn-outline-light w-100 fw-bold" href="logout.php" style="border-color: #ffc107; color: #ffc107;">
+                 <i class="bi bi-box-arrow-right me-2"></i> Logout
+             </a>
+        </div>
+    </div>
+    <div id="page-content-wrapper">
+        
+        <nav class="navbar navbar-expand-lg navbar-light navbar-top sticky-top py-2">
+            <div class="container-fluid">
+                <button class="btn btn-outline-secondary" id="sidebarToggle">
+                    <i class="bi bi-list"></i> Menu
+                </button>
+
+                <div class="d-flex align-items-center">
+                    <span class="navbar-text text-dark me-3 d-none d-md-inline small">
+                        Halo, <b class="fw-bolder"><?php echo $nama_lengkap_admin; ?></b> (<span class="text-info"><?php echo $role_admin; ?></span>)
+                    </span>
+                    <a class="btn btn-sm btn-danger d-md-none" href="logout.php">
+                            <i class="bi bi-box-arrow-right"></i>
+                    </a>
+                </div>
+            </div>
+        </nav>
+        <div class="container-fluid py-4">
             
             <div class="header-section text-center">
-                <h1 class="mb-2">👋 Selamat Datang, Petugas!</h1>
-                <p class="lead mb-0">PUSAT KONTROL LAYANAN PASIEN & ANTRIAN</p>
+                <h1 class="mb-2" style="font-weight: 700;">👋 Selamat Datang, Petugas!</h1>
+                <p class="lead mb-0" style="font-weight: 400; font-family: var(--main-font);">Dashboard Front Office Layanan Pasien</p>
             </div>
-            
-            <h4 class="mb-3 text-dark fw-bold">Ringkasan Harian (<?php echo date('d F Y', strtotime($today)); ?>)</h4>
+            <h4 class="mb-4 text-dark fw-bold" style="font-family: var(--heading-font);">📈 Ringkasan Harian (<?php echo date('d F Y', strtotime($today)); ?>)</h4>
             <div class="row mb-5">
-                <div class="col-lg-3 col-md-6 mb-3">
-                    <div class="card stat-card bg-primary text-white shadow-sm">
-                        <div class="card-body">
-                            <h5 class="card-title text-uppercase small">Total Pasien</h5>
-                            <p class="stat-value mb-0"><?php echo $stats['total_pasien']; ?></p>
+                <div class="col-xl-3 col-lg-6 col-md-6 mb-4">
+                    <div class="card stat-card primary">
+                        <div class="card-body d-flex align-items-center">
+                            <div class="stat-icon-wrapper me-4">
+                                <i class="bi bi-people-fill fs-2"></i>
+                            </div>
+                            <div>
+                                <p class="stat-title mb-0">Total Pasien Terdaftar</p>
+                                <p class="stat-value mb-0 text-primary"><?php echo $stats['total_pasien']; ?></p>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div class="col-lg-3 col-md-6 mb-3">
-                    <div class="card stat-card bg-info text-white shadow-sm">
-                        <div class="card-body">
-                            <h5 class="card-title text-uppercase small">Pendaftaran Hari Ini</h5>
-                            <p class="stat-value mb-0"><?php echo $stats['pendaftaran_hari_ini']; ?></p>
+                <div class="col-xl-3 col-lg-6 col-md-6 mb-4">
+                    <div class="card stat-card info">
+                        <div class="card-body d-flex align-items-center">
+                            <div class="stat-icon-wrapper me-4">
+                                <i class="bi bi-file-earmark-plus-fill fs-2"></i>
+                            </div>
+                            <div>
+                                <p class="stat-title mb-0">Pendaftaran Baru Hari Ini</p>
+                                <p class="stat-value mb-0 text-info"><?php echo $stats['pendaftaran_hari_ini']; ?></p>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div class="col-lg-3 col-md-6 mb-3">
-                    <div class="card stat-card bg-danger text-white shadow-sm">
-                        <div class="card-body">
-                            <h5 class="card-title text-uppercase small">Antrian Menunggu</h5>
-                            <p class="stat-value mb-0"><?php echo $stats['antrian_menunggu']; ?></p>
+                <div class="col-xl-3 col-lg-6 col-md-6 mb-4">
+                    <div class="card stat-card danger">
+                        <div class="card-body d-flex align-items-center">
+                            <div class="stat-icon-wrapper me-4">
+                                <i class="bi bi-clock-fill fs-2"></i>
+                            </div>
+                            <div>
+                                <p class="stat-title mb-0">Menunggu Panggilan</p>
+                                <p class="stat-value mb-0 text-danger"><?php echo $stats['antrian_menunggu']; ?></p>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div class="col-lg-3 col-md-6 mb-3">
-                    <div class="card stat-card bg-success text-white shadow-sm">
-                        <div class="card-body">
-                            <h5 class="card-title text-uppercase small">Antrian Selesai</h5>
-                            <p class="stat-value mb-0"><?php echo $stats['antrian_selesai']; ?></p>
+                <div class="col-xl-3 col-lg-6 col-md-6 mb-4">
+                    <div class="card stat-card success">
+                        <div class="card-body d-flex align-items-center">
+                            <div class="stat-icon-wrapper me-4">
+                                <i class="bi bi-check-circle-fill fs-2"></i>
+                            </div>
+                            <div>
+                                <p class="stat-title mb-0">Antrian Selesai Dilayani</p>
+                                <p class="stat-value mb-0 text-success"><?php echo $stats['antrian_selesai']; ?></p>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <p class="lead text-dark fw-bold mb-4">Akses Modul Utama:</p>
+            <h4 class="mb-4 text-dark fw-bold" style="font-family: var(--heading-font);">⚙️ Akses Cepat Modul Utama</h4>
             
             <div class="row mt-3">
-                <?php 
-                // Pisahkan Layar Antrian Publik agar ditaruh di tempat yang menonjol
-                $public_display_item = null;
-                $internal_menu_items = [];
-
-                foreach ($menu_items as $item) {
-                    if ($item['link'] === 'antrian_display.php') {
-                        $public_display_item = $item;
-                    } else {
-                        $internal_menu_items[] = $item;
-                    }
-                }
-                
-                foreach ($internal_menu_items as $item): ?>
-                    <div class="col-lg-6 col-md-6 mb-4">
+                <?php foreach ($internal_menu_items_dashboard as $item): ?>
+                    <div class="col-lg-6 col-md-12 mb-4">
                         <a href="<?php echo $item['link']; ?>" class="text-decoration-none" target="<?php echo $item['target']; ?>">
-                            <div class="card menu-card shadow-lg border-<?php echo $item['color']; ?>" 
+                            <div class="card menu-card shadow-sm" 
                                  style="border-left-color: var(--bs-<?php echo $item['color']; ?>) !important;">
                                 <div class="card-body">
                                     <div class="d-flex align-items-center">
-                                        <i class="bi <?php echo $item['icon']; ?> fs-1 me-3 text-<?php echo $item['color']; ?>"></i>
+                                        <i class="bi <?php echo $item['icon']; ?> fs-1 me-4 text-<?php echo $item['color']; ?>"></i>
                                         <div>
-                                            <h5 class="card-title text-dark fw-bold mb-1"><?php echo $item['title']; ?></h5>
+                                            <h5 class="card-title text-dark mb-1"><?php echo $item['title']; ?></h5>
                                             <p class="card-text text-muted small mb-0"><?php echo $item['desc']; ?></p>
                                         </div>
                                     </div>
@@ -279,16 +454,16 @@ mysqli_close($conn);
                 <?php endforeach; ?>
 
                 <?php if ($public_display_item): ?>
-                    <div class="col-lg-6 col-md-6 mb-4">
+                    <div class="col-lg-6 col-md-12 mb-4">
                         <a href="<?php echo $public_display_item['link']; ?>" class="text-decoration-none" target="<?php echo $public_display_item['target']; ?>">
-                            <div class="card menu-card shadow-lg border-<?php echo $public_display_item['color']; ?> bg-light" 
-                                 style="border-left-color: var(--bs-<?php echo $public_display_item['color']; ?>) !important;">
+                            <div class="card menu-card shadow-lg bg-light" 
+                                 style="border-left-color: var(--bs-warning) !important;">
                                 <div class="card-body">
                                     <div class="d-flex align-items-center">
-                                        <i class="bi <?php echo $public_display_item['icon']; ?> fs-1 me-3 text-<?php echo $public_display_item['color']; ?>"></i>
+                                        <i class="bi <?php echo $public_display_item['icon']; ?> fs-1 me-4 text-warning"></i>
                                         <div>
-                                            <h5 class="card-title text-dark fw-bold mb-1"><?php echo $public_display_item['title']; ?></h5>
-                                            <p class="card-text text-muted small mb-0 fw-bold text-danger"><?php echo $public_display_item['desc']; ?></p>
+                                            <h5 class="card-title text-dark mb-1">📢 <?php echo $public_display_item['title']; ?></h5>
+                                            <p class="card-text text-dark small mb-0 fw-bold"><?php echo $public_display_item['desc']; ?></p>
                                         </div>
                                     </div>
                                 </div>
@@ -300,37 +475,47 @@ mysqli_close($conn);
             
             <hr class="my-5">
 
-            <div class="alert alert-secondary text-center">
-                <i class="bi bi-info-circle-fill me-2"></i> Gunakan navigasi di **Navbar** untuk akses cepat dari halaman manapun.
+            <div class="alert alert-primary text-center shadow-sm border-0" role="alert" style="border-radius: 10px;">
+                <i class="bi bi-lightbulb-fill me-2"></i> **Tips Modern:** Klik tombol <i class="bi bi-list"></i> **Menu** di pojok kiri atas untuk menyembunyikan/menampilkan sidebar dan memaksimalkan ruang kerja Anda.
             </div>
 
         </div>
-    </div>
-    
-    <footer class="footer mt-auto py-3 bg-dark">
-        <div class="container text-center">
-            <span class="text-white">&copy; <?php echo date("Y"); ?> RS Jiwa. Hak Cipta Dilindungi.</span>
-        </div>
-    </footer>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-    // Opsional: JavaScript untuk menandai link aktif di Navbar secara dinamis
-    document.addEventListener('DOMContentLoaded', function() {
-        const currentPath = window.location.pathname.split('/').pop();
-        const navLinks = document.querySelectorAll('.navbar-nav .nav-link');
         
-        navLinks.forEach(link => {
-            // Logika default: tandai Dashboard sebagai aktif
-            if (link.href.endsWith('frontoffice_dashboard.php')) {
-                if (currentPath === 'frontoffice_dashboard.php' || currentPath === '') {
-                    link.classList.add('active-menu');
-                } else {
-                    link.classList.remove('active-menu');
-                }
-            }
+        <footer class="footer mt-auto py-3">
+            <div class="container-fluid text-center">
+                <span class="text-muted small">&copy; <?php echo date("Y"); ?> RS Jiwa. Hak Cipta Dilindungi. Didesain dengan Modern UI.</span>
+            </div>
+        </footer>
+        
+    </div>
+    </div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // Toggle sidebar script
+    document.addEventListener('DOMContentLoaded', function() {
+        var sidebarToggle = document.getElementById('sidebarToggle');
+        var wrapper = document.getElementById('wrapper');
+
+        sidebarToggle.addEventListener('click', function(e) {
+            e.preventDefault();
+            wrapper.classList.toggle('toggled');
         });
+
+        // Logika untuk memastikan sidebar tertutup di ponsel secara default, 
+        // dan terbuka di desktop.
+        function checkViewport() {
+            if (window.innerWidth < 992) {
+                // Di bawah desktop, sidebar tersembunyi
+                wrapper.classList.add('toggled');
+            } else {
+                // Di desktop, sidebar ditampilkan
+                wrapper.classList.remove('toggled');
+            }
+        }
+
+        window.addEventListener('resize', checkViewport);
+        checkViewport(); // Panggil saat pemuatan
     });
-    </script>
+</script>
 </body>
 </html>

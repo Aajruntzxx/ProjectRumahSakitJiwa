@@ -15,7 +15,7 @@ if ($_SESSION['role'] !== 'Super Admin') {
     exit();
 }
 
-include "koneksi.php";
+include "koneksi.php";  // ini ai kak, ix 100% ai
 
 // Definisikan variabel sesi untuk Navbar
 $nama_lengkap_admin = htmlspecialchars($_SESSION['nama_lengkap'] ?? 'User');
