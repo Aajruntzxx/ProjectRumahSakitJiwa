@@ -294,7 +294,7 @@ $menu_items = [
         </div>
         
         <footer class="mt-auto py-3 bg-white text-center border-top">
-            <span class="text-muted small">&copy; <?php echo date("Y"); ?> RS Jiwa.</span>
+            <span class="text-muted small">&copy; <?php echo date("Y"); ?> RS Jiwa GraSHia. Hak Cipta Dilindungi.</span>
         </footer>
     </div>
 </div>

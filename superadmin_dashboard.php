@@ -228,7 +228,7 @@ $card_items = array_filter($menu_items, fn($item) => isset($item['desc']));
 
     <div id="sidebar-wrapper">
         <div class="sidebar-heading d-flex align-items-center">
-            <i class="bi bi-hospital-fill me-2 fs-4"></i> RS Jiwa
+            <i class="bi bi-hospital-fill me-2 fs-4"></i> RS Jiwa Grahsia
         </div>
         <div class="list-group list-group-flush mt-3">
             <?php foreach ($menu_items as $item): 
@@ -301,7 +301,7 @@ $card_items = array_filter($menu_items, fn($item) => isset($item['desc']));
 
         <footer class="mt-auto py-3 bg-white text-center border-top">
             <div class="container small text-muted">
-                &copy; <?php echo date("Y"); ?> RS Jiwa. <span class="d-none d-sm-inline">All Rights Reserved.</span>
+                &copy; <?php echo date("Y"); ?> RS Jiwa GraSHia. <span class="d-none d-sm-inline">Hak Cipta Dilindungi.</span>
             </div>
         </footer>
 

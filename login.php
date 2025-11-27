@@ -71,12 +71,9 @@ if (isset($conn)) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login | Sistem Informasi RS Jiwa</title>
     
-    <!-- Bootstrap 5.3 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Bootstrap Icons -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     
-    <!-- Fonts: Poppins & Montserrat -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -114,33 +111,6 @@ if (isset($conn)) {
             font-size: 1.5rem;
             color: #333 !important;
             letter-spacing: -0.5px;
-        }
-
-        .nav-link {
-            font-weight: 500;
-            color: #555 !important;
-            margin-left: 15px;
-            transition: color 0.3s ease;
-        }
-
-        .nav-link:hover, .nav-link.active {
-            color: var(--primary-color) !important;
-        }
-
-        .btn-nav-support {
-            background-color: rgba(124, 77, 255, 0.1);
-            color: var(--primary-color) !important;
-            border-radius: 50px;
-            padding: 8px 25px;
-            font-weight: 600;
-            transition: all 0.3s ease;
-        }
-
-        .btn-nav-support:hover {
-            background-color: var(--primary-color);
-            color: white !important;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(124, 77, 255, 0.3);
         }
 
         /* Wrapper konten agar berada di tengah vertikal */
@@ -233,47 +203,26 @@ if (isset($conn)) {
 </head>
 <body>
 
-    <!-- Navbar Modern -->
-    <nav class="navbar navbar-expand-lg navbar-glass fixed-top">
+    <nav class="navbar navbar-glass fixed-top">
         <div class="container">
-            <a class="navbar-brand fw-bold d-flex align-items-center" href="#">
+            <a class="navbar-brand fw-bold d-flex align-items-center mx-auto mx-md-0" href="#">
                 <div class="bg-white text-primary rounded-circle d-flex align-items-center justify-content-center shadow-sm me-2" style="width: 40px; height: 40px;">
                     <i class="bi bi-heart-pulse-fill fs-5"></i>
                 </div>
-                <span style="background: linear-gradient(45deg, #333, #555); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">RS Jiwa</span>
+                <span style="background: linear-gradient(45deg, #333, #555); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">RS Jiwa GraSHia</span>
             </a>
-            <button class="navbar-toggler border-0 shadow-none" type="button" data-bs-toggle="collapse" data-bs-target="#loginNavbar" aria-controls="loginNavbar" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon" style="filter: invert(0.4);"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="loginNavbar">
-                <ul class="navbar-nav ms-auto mb-2 mb-lg-0 align-items-lg-center">
-                    <li class="nav-item">
-                        <a class="nav-link" href="#"><i class="bi bi-info-circle me-1"></i>Tentang</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#"><i class="bi bi-journal-medical me-1"></i>Layanan</a>
-                    </li>
-                    <li class="nav-item ms-lg-3">
-                        <a class="nav-link btn-nav-support" href="#">
-                            <i class="bi bi-headset me-2"></i>Bantuan IT
-                        </a>
-                    </li>
-                </ul>
             </div>
-        </div>
     </nav>
 
-    <!-- Content Wrapper -->
     <div class="content-wrapper">
         <div class="container">
             <div class="row justify-content-center">
                 <div class="col-md-5 col-lg-4">
                     
                     <div class="card card-login">
-                        <!-- Header Login -->
                         <div class="login-header">
                             <i class="bi bi-hospital-fill login-icon"></i>
-                            <h3 class="fw-bold mb-0">SIM RS Jiwa</h3>
+                            <h3 class="fw-bold mb-0"> RS Jiwa GraSHia</h3>
                             <p class="small opacity-75 mb-0">Portal Login Admin, Dokter & Staff</p>
                         </div>
 
@@ -328,10 +277,9 @@ if (isset($conn)) {
         </div>
     </div>
 
-    <!-- Footer -->
     <footer class="footer text-center">
         <div class="container">
-            <span class="text-muted small">&copy; <?php echo date("Y"); ?> RS Jiwa. Hak Cipta Dilindungi.</span>
+            <span class="text-muted small">&copy; <?php echo date("Y"); ?> RS Jiwa GraSHia. Hak Cipta Dilindungi.</span>
         </div>
     </footer>
 

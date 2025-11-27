@@ -414,7 +414,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         </div>
         
         <footer class="mt-auto py-3 bg-white text-center border-top">
-            <span class="text-muted small">&copy; <?php echo date("Y"); ?> RS Jiwa.</span>
+            <span class="text-muted small">&copy; <?php echo date("Y"); ?> RS Jiwa GraSHia.</span>
         </footer>
     </div>
 </div>
