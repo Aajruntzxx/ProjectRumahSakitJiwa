@@ -15,6 +15,43 @@ if (!isset($_SESSION['role']) || !in_array($_SESSION['role'], $allowed_roles)) {
 
 include "koneksi.php";
 
+// --- LOGIKA HAPUS DATA ---
+$pesan_notifikasi = "";
+if (isset($_GET['action']) && $_GET['action'] == 'delete' && isset($_GET['id'])) {
+    $id_hapus = intval($_GET['id']); // Sanitasi ID menjadi integer
+
+    // Cek apakah data ada
+    $cek_query = "SELECT nama_lengkap FROM pasien WHERE pasien_id = $id_hapus";
+    $cek_result = mysqli_query($conn, $cek_query);
+
+    if (mysqli_num_rows($cek_result) > 0) {
+        $data_pasien = mysqli_fetch_assoc($cek_result);
+        $nama_dihapus = htmlspecialchars($data_pasien['nama_lengkap']);
+
+        // Jalankan Query Delete
+        $query_delete = "DELETE FROM pasien WHERE pasien_id = $id_hapus";
+        
+        try {
+            if (mysqli_query($conn, $query_delete)) {
+                $pesan_notifikasi = "
+                <div class='alert alert-success alert-dismissible fade show' role='alert'>
+                    <i class='bi bi-check-circle-fill me-2'></i>Data pasien <strong>$nama_dihapus</strong> berhasil dihapus.
+                    <button type='button' class='btn-close' data-bs-dismiss='alert' aria-label='Close'></button>
+                </div>";
+            } else {
+                throw new Exception(mysqli_error($conn));
+            }
+        } catch (Exception $e) {
+            // Menangkap error jika gagal hapus (biasanya karena Foreign Key Constraint / Data Terkait)
+            $pesan_notifikasi = "
+            <div class='alert alert-danger alert-dismissible fade show' role='alert'>
+                <i class='bi bi-exclamation-triangle-fill me-2'></i><strong>Gagal Menghapus!</strong> Pasien ini mungkin memiliki riwayat pendaftaran atau rekam medis yang terkait.
+                <button type='button' class='btn-close' data-bs-dismiss='alert' aria-label='Close'></button>
+            </div>";
+        }
+    }
+}
+
 // --- 2. VARIABEL TAMPILAN ---
 $nama_lengkap = htmlspecialchars($_SESSION['nama_lengkap'] ?? 'User');
 $role = htmlspecialchars($_SESSION['role'] ?? 'Guest');
@@ -160,7 +197,7 @@ $menu_items = [
         .card-header-custom {
             background-color: white;
             border-bottom: 2px solid #f0f2f5;
-            padding: 20px;
+            padding: 15px 20px;
             border-radius: 12px 12px 0 0;
         }
         
@@ -220,7 +257,7 @@ $menu_items = [
 
         <div class="main-content">
             
-            <div class="d-flex justify-content-between align-items-center mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
                 <div>
                     <h3 class="fw-bold text-dark mb-1">Data Pasien</h3>
                     <p class="text-muted small mb-0">Kelola data rekam medis dan registrasi.</p>
@@ -230,16 +267,53 @@ $menu_items = [
                 </a>
             </div>
 
+            <?php echo $pesan_notifikasi; ?>
+
             <div class="card card-custom">
+                
+                <div class="card-header-custom d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+                    <h5 class="mb-0 fw-bold text-secondary"><i class="bi bi-table me-2"></i>Daftar Pasien</h5>
+                    
+                    <form action="" method="GET" class="d-flex w-100 w-md-auto" style="max-width: 400px;">
+                        <div class="input-group">
+                            <span class="input-group-text bg-white border-end-0 text-secondary"><i class="bi bi-search"></i></span>
+                            <input type="text" name="q" class="form-control border-start-0 border-end-0" 
+                                   placeholder="Cari Nama / NIK / RM..." 
+                                   value="<?php echo isset($_GET['q']) ? htmlspecialchars($_GET['q']) : ''; ?>">
+                            
+                            <?php if(isset($_GET['q']) && $_GET['q'] != ''): ?>
+                                <a href="pasien_list.php" class="btn btn-outline-secondary border-start-0 border-end-0" title="Hapus Pencarian">
+                                    <i class="bi bi-x-lg"></i>
+                                </a>
+                            <?php endif; ?>
+                            
+                            <button class="btn btn-primary" type="submit">Cari</button>
+                        </div>
+                    </form>
+                </div>
+
                 <div class="card-body p-0">
                     <?php
-                    $sql = "SELECT pasien_id, no_rekam_medis, nik, nama_lengkap, tgl_lahir, jenis_kelamin, no_hp, tgl_daftar FROM pasien ORDER BY tgl_daftar DESC";
+                    // --- LOGIKA PENCARIAN ---
+                    $keyword = "";
+                    $sql = "SELECT pasien_id, no_rekam_medis, nik, nama_lengkap, tgl_lahir, jenis_kelamin, no_hp, tgl_daftar FROM pasien";
+
+                    // Jika ada input pencarian di URL (?q=...)
+                    if (isset($_GET['q']) && !empty($_GET['q'])) {
+                        $keyword = mysqli_real_escape_string($conn, $_GET['q']);
+                        // Filter berdasarkan Nama, NIK, atau No Rekam Medis
+                        $sql .= " WHERE nama_lengkap LIKE '%$keyword%' 
+                                  OR nik LIKE '%$keyword%' 
+                                  OR no_rekam_medis LIKE '%$keyword%'";
+                    }
+
+                    $sql .= " ORDER BY tgl_daftar DESC";
                     $result = mysqli_query($conn, $sql);
 
                     if ($result && mysqli_num_rows($result) > 0) {
                         // WRAPPER TABLE RESPONSIVE
                         echo '<div class="table-responsive">';
-                        echo '<table class="table table-hover align-middle mb-0" style="min-width: 900px;">'; // Min-width untuk trigger scroll
+                        echo '<table class="table table-hover align-middle mb-0" style="min-width: 900px;">'; 
                         echo '<thead class="table-light text-secondary small text-uppercase">
                                 <tr>
                                     <th class="ps-4">No. RM</th>
@@ -268,7 +342,10 @@ $menu_items = [
                             echo "<td>" . htmlspecialchars($row['no_hp'] ?? '-') . "</td>";
                             echo "<td>" . date('d/m/y', strtotime($row['tgl_daftar'])) . "</td>";
                             echo '<td class="text-center pe-4">';
-                            echo "<a href='pasien_form.php?id=" . $row['pasien_id'] . "' class='btn btn-sm btn-outline-warning'><i class='bi bi-pencil-square'></i></a>";
+                            // TOMBOL EDIT
+                            echo "<a href='pasien_form.php?id=" . $row['pasien_id'] . "' class='btn btn-sm btn-outline-warning me-1' title='Edit'><i class='bi bi-pencil-square'></i></a>";
+                            // TOMBOL HAPUS (DITAMBAHKAN)
+                            echo "<a href='pasien_list.php?action=delete&id=" . $row['pasien_id'] . "' class='btn btn-sm btn-outline-danger' title='Hapus' onclick=\"return confirm('Apakah Anda yakin ingin menghapus data pasien: " . addslashes($row['nama_lengkap']) . "? Data yang dihapus tidak dapat dikembalikan.');\"><i class='bi bi-trash-fill'></i></a>";
                             echo "</td>";
                             echo "</tr>";
                         }
@@ -277,9 +354,16 @@ $menu_items = [
                         echo '</table>';
                         echo '</div>'; // End table-responsive
                     } else {
+                        // TAMPILAN JIKA DATA KOSONG
                         echo '<div class="p-5 text-center">';
-                        echo '<i class="bi bi-folder2-open display-4 text-muted opacity-50"></i>';
-                        echo '<p class="mt-3 text-muted fw-bold">Belum ada data pasien.</p>';
+                        echo '<i class="bi bi-search display-4 text-muted opacity-50"></i>';
+                        echo '<p class="mt-3 text-muted fw-bold">Data tidak ditemukan.</p>';
+                        
+                        if(!empty($keyword)){
+                            echo '<p class="text-muted small">Pencarian untuk "<strong>'.htmlspecialchars($keyword).'</strong>" tidak ada hasilnya.</p>';
+                            echo '<a href="pasien_list.php" class="btn btn-sm btn-secondary mt-2">Reset Pencarian</a>';
+                        }
+                        
                         echo '</div>';
                     }
 
