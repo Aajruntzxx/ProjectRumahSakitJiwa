@@ -1,17 +1,16 @@
 <?php
 // Pastikan file koneksi.php tersedia
-include "koneksi.php"; // Pastikan path file koneksi.php sudah benar
+include "koneksi.php"; 
 
-// Set zona waktu (Opsional, tapi disarankan jika belum diset di PHP/MySQL)
+// Set zona waktu
 date_default_timezone_set('Asia/Jakarta'); 
 
-// --- Variabel Tambahan untuk Tampilan ---
-$logo_path = "img/logo_rs.png"; // GANTI dengan path logo rumah sakit Anda yang sebenarnya!
-$today_date_time = date('l, d F Y | H:i:s'); // Format: Hari, Tgl Bulan Tahun | Jam:Menit:Detik
-$refresh_interval = 10; // Interval refresh meta tag
+// --- Variabel Tampilan ---
+$logo_path = "img/logo_rs.png"; // Sesuaikan path logo
+$today_date_time = date('l, d F Y | H:i:s'); 
+$refresh_interval = 10; // Detik
 
-// Query untuk mendapatkan antrian yang sedang dipanggil ("Dipanggil" atau "Sedang Periksa")
-// Query tetap sama karena fungsionalitasnya sudah benar
+// --- 1. Query Antrian Dipanggil / Sedang Periksa ---
 $sql_called = "SELECT a.nomor_antrian, p.nama_poli, d.nama_lengkap AS nama_dokter, a.poli_id, a.waktu_dipanggil 
                 FROM antrian a
                 JOIN poli p ON a.poli_id = p.poli_id
@@ -22,21 +21,20 @@ $sql_called = "SELECT a.nomor_antrian, p.nama_poli, d.nama_lengkap AS nama_dokte
                 ORDER BY a.waktu_dipanggil DESC";
 $result_called = mysqli_query($conn, $sql_called);
 
-// Ambil semua hasil antrian yang dipanggil ke array
 $calling_antrian = [];
 if ($result_called) {
     $temp_calling = [];
     while ($row = mysqli_fetch_assoc($result_called)) {
-        // Ambil hanya entri pertama per poli (yang paling baru dipanggil/periksa)
+        // Ambil hanya satu entri terbaru per poli
         if (!isset($temp_calling[$row['poli_id']])) {
             $temp_calling[$row['poli_id']] = $row;
         }
     }
-    $calling_antrian = array_values($temp_calling); // Konversi kembali ke array berindeks numerik
+    $calling_antrian = array_values($temp_calling);
     mysqli_free_result($result_called);
 }
 
-// Query untuk mendapatkan semua antrian yang masih menunggu hari ini
+// --- 2. Query Antrian Menunggu ---
 $sql_waiting = "SELECT a.nomor_antrian, p.nama_poli, p.poli_id
                 FROM antrian a
                 JOIN poli p ON a.poli_id = p.poli_id
@@ -44,7 +42,6 @@ $sql_waiting = "SELECT a.nomor_antrian, p.nama_poli, p.poli_id
                 ORDER BY p.poli_id, a.antrian_id ASC";
 $result_waiting = mysqli_query($conn, $sql_waiting);
 
-// Ambil semua hasil antrian menunggu ke array dan kelompokkan
 $waiting_grouped = [];
 if ($result_waiting) {
     while ($antrian = mysqli_fetch_assoc($result_waiting)) {
@@ -53,7 +50,7 @@ if ($result_waiting) {
     mysqli_free_result($result_waiting);
 }
 
-// Tutup koneksi di akhir, tapi sebelum itu, siapkan data untuk JavaScript
+// JSON Data untuk JS
 $calling_data_json = json_encode($calling_antrian); 
 $waiting_data_json = json_encode($waiting_grouped);
 ?>
@@ -62,400 +59,363 @@ $waiting_data_json = json_encode($waiting_grouped);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Informasi Antrian RS Jiwa | Live Display Per Poli</title>
+    <title>Layar Antrian | RS Jiwa</title>
+    
+    <!-- Refresh Otomatis -->
     <meta http-equiv="refresh" content="<?php echo $refresh_interval; ?>"> 
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700;900&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    
+    <!-- Bootstrap & Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;900&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
-        /* Palet Warna Baru:
-         * Primer (Background): #f0f2f5 (Light Gray/Off-White)
-         * Sekunder (Header/Aksen): Gradient dari #00bcd4 ke #00897b (Cyan/Teal)
-         * Antrian Dipanggil: #dc3545 (Merah) -> Diubah menjadi #e53935 untuk card background
-         * Antrian Menunggu: #ffc107 (Kuning)
-         * Background Antrian Menunggu: #34495e (Dark Slate Gray/Biru Gelap)
-        */
+        :root {
+            --main-font: 'Poppins', sans-serif;
+            --heading-font: 'Montserrat', sans-serif;
+            --primary-color: #0d6efd;
+            --secondary-color: #6c757d;
+            --bg-color: #f0f2f5;
+            --card-bg: #ffffff;
+        }
+
         body {
-            font-family: 'Poppins', sans-serif;
-            background-color: #f0f2f5; /* Light Gray/Off-White */
-            color: #34495e; /* Dark Slate Gray */
+            font-family: var(--main-font);
+            background-color: var(--bg-color);
+            overflow-x: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header Modern */
+        .display-header {
+            background: linear-gradient(135deg, #0d6efd, #0dcaf0);
+            color: white;
+            padding: 20px 40px;
+            border-bottom-left-radius: 30px;
+            border-bottom-right-radius: 30px;
+            box-shadow: 0 10px 30px rgba(13, 110, 253, 0.2);
+            margin-bottom: 30px;
         }
         
-        /* Modifikasi Header dengan Gradasi */
-        .header {
-            background: linear-gradient(90deg, #00bcd4 0%, #00897b 100%); /* Gradasi dari Cyan ke Dark Teal */
-            padding: 15px 0;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3); /* Shadow lebih kuat */
-            color: #ffffff;
-        }
-        .logo-img {
-            max-height: 70px; 
-            margin-right: 15px;
-            filter: drop-shadow(0 0 5px rgba(0, 0, 0, 0.5));
-        }
-        .main-title {
-            font-weight: 700 !important;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
-        }
-        /* Akhir Modifikasi Header */
-
-        /* Judul Antrian Dipanggil dengan background */
-        .called-title-box {
-            background-color: #e53935; /* Merah Marun/Solid Red */
-            color: white;
-            padding: 10px 15px;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-            margin-bottom: 20px;
+        .display-title {
+            font-family: var(--heading-font);
+            font-weight: 900;
+            letter-spacing: -1px;
+            text-transform: uppercase;
         }
 
-
-        /* Modifikasi Card Display Antrian Dipanggil */
-        .main-display-card {
-            background-color: #ffffff; 
-            color: #34495e;
-            margin-bottom: 20px;
-            border-radius: 12px; /* Lebih rounded */
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1); /* Shadow lebih halus */
-            min-height: 200px; /* Lebih tinggi */
-            border-top: 8px solid #00bcd4; /* Cyan/Teal Cerah di atas */
-            transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+        /* Card Styles */
+        .card-display {
+            border: none;
+            border-radius: 20px;
+            background-color: var(--card-bg);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            transition: transform 0.3s ease;
+            overflow: hidden;
             position: relative;
         }
-        .highlight-call {
-            animation: call-pulse 1s 3 ease-out, scale-up 0.5s ease-in-out; 
-            transform: scale(1.05);
-            border-top: 8px solid #ffc107 !important; /* Kuning untuk Highlight */
+        
+        .card-header-display {
+            background: linear-gradient(45deg, #f8f9fa, #e9ecef);
+            padding: 15px 20px;
+            font-weight: 700;
+            color: #495057;
+            border-bottom: 1px solid #dee2e6;
         }
 
-        .antrian-nomor-mini {
-            font-family: 'Poppins', sans-serif;
-            font-size: 5rem; /* Lebih besar */
+        /* Bagian Kiri: Sedang Dipanggil */
+        .card-calling {
+            border-left: 10px solid #ffc107; /* Kuning Warning */
+            height: 100%;
+        }
+        .highlight-call {
+            animation: pulse-highlight 1.5s infinite alternate;
+            border-left-color: #dc3545; /* Merah saat baru */
+        }
+        @keyframes pulse-highlight {
+            from { box-shadow: 0 0 10px rgba(220, 53, 69, 0.1); transform: scale(1); }
+            to { box-shadow: 0 0 25px rgba(220, 53, 69, 0.4); transform: scale(1.02); }
+        }
+
+        .calling-number {
+            font-family: var(--heading-font);
+            font-size: 6rem;
             font-weight: 900;
             line-height: 1;
-            color: #e53935; /* Merah Marun */
-            animation: pulse-number 1.5s infinite;
-            display: block;
+            color: #212529;
+            margin: 20px 0;
         }
-        .called-poli {
-            font-size: 1.5rem; /* Lebih besar */
-            color: #00897b; /* Dark Teal */
+        .calling-poli {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #0d6efd;
+        }
+        .calling-dokter {
+            font-size: 1.1rem;
+            color: #6c757d;
+            background-color: #f8f9fa;
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 50px;
+        }
+
+        /* Bagian Kanan: Menunggu */
+        .waiting-container {
+            background-color: #343a40;
+            border-radius: 20px;
+            padding: 25px;
+            color: white;
+            height: 100%;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+        }
+        .waiting-item {
+            background-color: rgba(255,255,255,0.1);
+            margin-bottom: 15px;
+            border-radius: 12px;
+            padding: 15px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .waiting-header {
+            color: #ffc107;
+            font-weight: 700;
+            font-size: 1.2rem;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+            padding-bottom: 5px;
+            margin-bottom: 10px;
+        }
+        .badge-waiting {
+            font-size: 1.1rem;
+            background-color: white;
+            color: #212529;
+            margin: 3px;
+            padding: 5px 10px;
+            border-radius: 8px;
             font-weight: 700;
         }
-        /* Akhir Modifikasi Card */
 
-        .waiting-panel {
-            background-color: #34495e; 
-            border-radius: 12px; /* Lebih rounded */
-            padding: 25px; /* Lebih banyak padding */
-            height: 100%;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-        }
-        .footer-banner {
-            background-color: #212529; /* Darker footer */
-            color: #ffffff;
-            padding: 8px 0;
+        /* Footer Marquee */
+        .footer-marquee {
             position: fixed;
             bottom: 0;
-            left: 0;
             width: 100%;
-            z-index: 10;
+            background-color: #212529;
+            color: white;
+            padding: 10px 0;
+            z-index: 1000;
+            font-size: 1.1rem;
+            font-weight: 500;
+            box-shadow: 0 -5px 15px rgba(0,0,0,0.1);
         }
         
-        /* Tambahkan style untuk dokter */
-        .doctor-name {
-            font-size: 0.9rem;
-            color: #6c757d;
-        }
-        
-        /* Marquee CSS dan Keyframes tetap sama */
-        .scroll-text {
-            white-space: nowrap;
-            overflow: hidden;
-            box-sizing: border-box;
-        }
-        .scroll-text-content {
-            display: inline-block;
-            padding-left: 100%;
-            animation: marquee 20s linear infinite;
-        }
-        @keyframes marquee {
-            0%   { transform: translate(0, 0); }
-            100% { transform: translate(-100%, 0); }
-        }
-        @keyframes call-pulse {
-            0% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7); }
-            50% { box-shadow: 0 0 0 15px rgba(255, 193, 7, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0); }
-        }
-        @keyframes scale-up {
-            0% { transform: scale(0.95); opacity: 0.5; }
-            100% { transform: scale(1.05); opacity: 1; }
-        }
-        @keyframes pulse-number { 
-            0% { transform: scale(1); }
-            50% { transform: scale(1.02); }
-            100% { transform: scale(1); }
-        }
-        /* Custom Accordion for Waiting List tetap sama */
-        .accordion-item {
-            border: none;
-            margin-bottom: 10px;
-            border-radius: 8px;
-            overflow: hidden;
-        }
-        .accordion-button {
-            background-color: #ffffff !important; 
-            color: #34495e !important;
-            font-weight: 600;
-            border-bottom: 1px solid #ddd;
-        }
-        .accordion-body {
-            background-color: #34495e; 
-            color: #ffffff;
-            border-top: 1px solid #5a6d80;
-        }
-        .badge.bg-warning {
-            background-color: #ffc107 !important;
-            color: #34495e !important;
-            font-weight: 700;
-            padding: 8px 12px;
-            border-radius: 5px;
+        /* Helpers */
+        .empty-state {
+            height: 300px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #adb5bd;
         }
     </style>
 </head>
 <body>
-    <audio id="notifAudio" src="path/to/bell_or_chime.mp3" preload="auto"></audio> 
 
-    <div class="header text-white">
+    <!-- Header -->
+    <div class="display-header">
         <div class="container-fluid">
             <div class="row align-items-center">
-                
                 <div class="col-md-8 d-flex align-items-center">
-                    <img src="<?php echo $logo_path; ?>" alt="Logo Rumah Sakit" class="logo-img d-none d-sm-block">
-                    <div class="text-left">
-                        <h1 class="mb-0 main-title">RS JIWA - ANTRIAN LAYANAN <i class="bi bi-hospital"></i></h1>
-                        <p class="mb-0 fw-light small">DISPLAY LIVE PER POLI</p>
+                    <div class="bg-white p-2 rounded-circle me-3 shadow-sm" style="width: 70px; height: 70px; display: flex; align-items: center; justify-content: center;">
+                        <i class="bi bi-hospital-fill text-primary fs-1"></i>
+                    </div>
+                    <div>
+                        <h1 class="display-title mb-0">RS JIWA</h1>
+                        <p class="mb-0 fw-light opacity-75" style="letter-spacing: 2px;">SISTEM INFORMASI ANTRIAN TERPADU</p>
                     </div>
                 </div>
-
                 <div class="col-md-4 text-end">
-                    <p class="mb-1 fw-bold fs-5" id="currentDateTime">
-                        <i class="bi bi-calendar-check me-2"></i> <?php echo $today_date_time; ?> WIB
-                    </p>
-                    <p class="mb-0 small text-light fw-light">Data diperbarui otomatis setiap **<?php echo $refresh_interval; ?> detik**</p>
+                    <h3 class="fw-bold mb-0" id="clock">00:00:00</h3>
+                    <p class="mb-0"><?php echo date('l, d F Y'); ?></p>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="container-fluid pt-4">
-        <div class="row">
+    <!-- Main Content -->
+    <div class="container-fluid flex-grow-1 pb-5 mb-5">
+        <div class="row h-100 g-4">
             
-            <div class="col-lg-6">
-                <div class="called-title-box">
-                    <h3 class="mb-0 fw-bold"><i class="bi bi-megaphone-fill me-2"></i> Antrian Sedang Dipanggil</h3>
-                </div>
+            <!-- Kolom Kiri: Antrian Dipanggil -->
+            <div class="col-lg-7">
+                <h4 class="text-secondary fw-bold mb-3 ps-2 border-start border-5 border-warning">
+                    <i class="bi bi-megaphone-fill me-2"></i>SEDANG DIPANGGIL / PERIKSA
+                </h4>
                 
-                <div class="row" id="callingList">
-                    
+                <div class="row g-4" id="callingContainer">
                     <?php if (!empty($calling_antrian)): ?>
                         <?php foreach($calling_antrian as $antrian): ?>
-                            <div class="col-md-6 mb-4" data-poli-id="<?php echo htmlspecialchars($antrian['poli_id']); ?>" data-nomor-antrian="<?php echo htmlspecialchars($antrian['nomor_antrian']); ?>" data-call-time="<?php echo htmlspecialchars($antrian['waktu_dipanggil']); ?>">
-                                <div class="main-display-card p-4 text-center">
-                                    <p class="text-muted small mb-1">Poli Tujuan</p>
-                                    <h4 class="called-poli text-uppercase mb-3">
-                                        <?php echo htmlspecialchars($antrian['nama_poli']); ?>
-                                    </h4>
-                                    
-                                    <div class="antrian-nomor-mini mx-auto mb-3">
-                                        <?php echo htmlspecialchars($antrian['nomor_antrian']); ?>
+                            <div class="col-md-12 mb-2" data-poli-id="<?php echo htmlspecialchars($antrian['poli_id']); ?>" data-call-time="<?php echo htmlspecialchars($antrian['waktu_dipanggil']); ?>">
+                                <div class="card-display card-calling p-4 text-center d-flex flex-row align-items-center justify-content-between">
+                                    <!-- Info Poli & Dokter -->
+                                    <div class="text-start w-50">
+                                        <div class="calling-poli text-uppercase mb-1">
+                                            <?php echo htmlspecialchars($antrian['nama_poli']); ?>
+                                        </div>
+                                        <div class="calling-dokter">
+                                            <i class="bi bi-person-fill me-1"></i> <?php echo htmlspecialchars($antrian['nama_dokter'] ?? 'Dokter Jaga'); ?>
+                                        </div>
+                                        <div class="mt-2 text-muted small">
+                                            <i class="bi bi-clock me-1"></i> Dipanggil: <?php echo date('H:i', strtotime($antrian['waktu_dipanggil'])); ?>
+                                        </div>
                                     </div>
                                     
-                                    <p class="mb-0 text-dark small doctor-name">
-                                        <i class="bi bi-person-fill me-1"></i> Dokter: **<?php echo htmlspecialchars($antrian['nama_dokter'] ?? 'N/A'); ?>**
-                                    </p>
+                                    <!-- Nomor Besar -->
+                                    <div class="w-50 text-end pe-4 border-start">
+                                        <div class="text-secondary fw-bold small">NOMOR ANTRIAN</div>
+                                        <div class="calling-number text-primary">
+                                            <?php echo htmlspecialchars($antrian['nomor_antrian']); ?>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         <?php endforeach; ?>
-                        
                     <?php else: ?>
-                        <div class="col-12" id="noCallMessage">
-                            <div class="alert alert-light border-0 text-center" role="alert" style="color: #6c757d;">
-                                <i class="bi bi-bell-slash fs-2 mb-3"></i>
-                                <h4 class="alert-heading">TIDAK ADA PANGGILAN AKTIF</h4>
-                                <p>Mohon menunggu, layanan akan segera dimulai.</p>
+                        <div class="col-12">
+                            <div class="card-display card-calling p-5 text-center">
+                                <div class="empty-state">
+                                    <i class="bi bi-bell-slash display-1 mb-3"></i>
+                                    <h3>Belum Ada Panggilan</h3>
+                                    <p>Silakan menunggu, antrian akan segera dimulai.</p>
+                                </div>
                             </div>
                         </div>
                     <?php endif; ?>
                 </div>
             </div>
 
-            <div class="col-lg-6">
-                <div class="waiting-panel">
-                    <h4 class="text-warning text-center mb-4 fw-bold"><i class="bi bi-people-fill me-2"></i> Antrian Menunggu (Next in Line)</h4>
-                    
+            <!-- Kolom Kanan: Antrian Menunggu -->
+            <div class="col-lg-5">
+                <div class="waiting-container">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h4 class="mb-0 fw-bold text-white"><i class="bi bi-people-fill me-2"></i>NEXT IN LINE</h4>
+                        <span class="badge bg-warning text-dark">Live Status</span>
+                    </div>
+
                     <?php if (!empty($waiting_grouped)): ?>
-                        <div class="accordion" id="accordionWaiting">
-                            <?php $i = 0; foreach ($waiting_grouped as $poli_name => $antrian_numbers): $i++; ?>
-                                <div class="accordion-item">
-                                    <h2 class="accordion-header" id="heading<?php echo $i; ?>">
-                                        <button class="accordion-button <?php echo ($i > 1) ? 'collapsed' : ''; ?>" type="button" data-bs-toggle="collapse" data-bs-target="#collapse<?php echo $i; ?>" aria-expanded="<?php echo ($i <= 1) ? 'true' : 'false'; ?>" aria-controls="collapse<?php echo $i; ?>">
-                                            **<?php echo htmlspecialchars($poli_name); ?>** (<?php echo count($antrian_numbers); ?> antrian menunggu)
-                                        </button>
-                                    </h2>
-                                    <div id="collapse<?php echo $i; ?>" class="accordion-collapse collapse <?php echo ($i <= 1) ? 'show' : ''; ?>" aria-labelledby="heading<?php echo $i; ?>" data-bs-parent="#accordionWaiting">
-                                        <div class="accordion-body">
-                                            <p class="text-light small mb-2">Antrian Selanjutnya (Max 5 ditampilkan):</p>
-                                            <div class="antrian-list-numbers">
-                                                <?php 
-                                                $display_limit = 5;
-                                                $displayed_count = 0;
-                                                foreach ($antrian_numbers as $num): 
-                                                    if ($displayed_count < $display_limit):
-                                                ?>
-                                                        <span class="badge bg-warning me-2 mb-2">#<?php echo htmlspecialchars($num); ?></span>
-                                                <?php 
-                                                        $displayed_count++;
-                                                    endif;
-                                                endforeach; 
-                                                ?>
-                                                <?php if (count($antrian_numbers) > $display_limit): ?>
-                                                    <span class="badge bg-light text-dark fw-bold">+<?php echo count($antrian_numbers) - $display_limit; ?> lainnya</span>
-                                                <?php endif; ?>
-                                            </div>
-                                        </div>
+                        <div class="waiting-list-wrapper" style="overflow-y: auto; max-height: 60vh; padding-right: 5px;">
+                            <?php foreach ($waiting_grouped as $poli_name => $antrian_numbers): ?>
+                                <div class="waiting-item">
+                                    <div class="waiting-header d-flex justify-content-between">
+                                        <span><?php echo htmlspecialchars($poli_name); ?></span>
+                                        <span class="badge bg-dark border border-secondary"><?php echo count($antrian_numbers); ?> org</span>
+                                    </div>
+                                    <div>
+                                        <?php 
+                                        // Tampilkan max 8 antrian per poli agar tidak penuh
+                                        $limit = 8;
+                                        $count = 0;
+                                        foreach ($antrian_numbers as $num): 
+                                            if ($count < $limit):
+                                        ?>
+                                            <span class="badge badge-waiting"><?php echo htmlspecialchars($num); ?></span>
+                                        <?php 
+                                            $count++;
+                                            endif;
+                                        endforeach; 
+                                        ?>
+                                        <?php if(count($antrian_numbers) > $limit): ?>
+                                            <span class="text-white-50 small ms-1">+<?php echo count($antrian_numbers) - $limit; ?> lainnya</span>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
                             <?php endforeach; ?>
                         </div>
                     <?php else: ?>
-                        <div class="alert alert-light text-center mt-5" role="alert">
-                            <i class="bi bi-info-circle-fill me-2"></i> Semua poli sedang kosong atau layanan hari ini telah berakhir.
+                        <div class="empty-state text-white-50">
+                            <i class="bi bi-cup-hot display-4 mb-3"></i>
+                            <p>Tidak ada antrian menunggu.</p>
                         </div>
                     <?php endif; ?>
                 </div>
             </div>
-        </div>
-    </div>
-    
-    <div class="footer-banner">
-        <div class="container-fluid">
-            <div class="scroll-text text-center">
-                <p class="mb-0 fw-bold small scroll-text-content" id="rotatingMessage">
-                    </p>
-            </div>
+
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+    <!-- Footer Marquee -->
+    <div class="footer-marquee">
+        <marquee scrollamount="8">
+             <strong>INFORMASI:</strong> Harap memperhatikan nomor antrian Anda. Pasien yang dipanggil 3 kali tidak hadir akan dilewati. | 
+            <strong>JAM PELAYANAN:</strong> Senin - Jumat (08:00 - 14:00 WIB), Sabtu (08:00 - 12:00 WIB). |
+             <strong>PROTOKOL:</strong> Tetap jaga jarak dan gunakan masker di area rumah sakit.
+        </marquee>
+    </div>
 
+    <!-- Audio Element -->
+    <audio id="bellAudio" src="assets/audio/bell.mp3"></audio>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Data Antrian dari PHP (di-encode menjadi JSON)
-        const CALLING_ANTRIAN_DATA = <?php echo $calling_data_json; ?>;
-        const audio = document.getElementById('notifAudio');
-        const rotatingMessageElement = document.getElementById('rotatingMessage');
-        const currentDateTimeElement = document.getElementById('currentDateTime');
-        
-        // --- IDE #1: Notifikasi Audio (Web Speech API) ---
-        function announceQueue(antrian) {
-            if (audio) {
-                audio.play().catch(e => console.warn("Autoplay audio failed:", e));
-            }
+        // Data PHP ke JS
+        const callingData = <?php echo $calling_data_json; ?>;
+        const audio = document.getElementById('bellAudio');
 
-            if ('speechSynthesis' in window) {
-                const utterance = new SpeechSynthesisUtterance(
-                    `Nomor Antrian ${antrian.nomor_antrian}. ${antrian.nama_poli}. Silakan menuju ruangan poli Anda. Terima kasih.`
-                );
-                utterance.lang = 'id-ID'; 
-                utterance.rate = 0.9; 
-                window.speechSynthesis.speak(utterance);
-            }
+        // Update Jam Realtime
+        function updateClock() {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            document.getElementById('clock').innerText = timeString;
         }
+        setInterval(updateClock, 1000);
+        updateClock();
 
-        // --- IDE #2: Animasi dan Highlighting Panggilan Baru ---
-        function checkAndHighlightNewCalls() {
-            let lastCalled = JSON.parse(localStorage.getItem('lastCalledQueue')) || {};
+        // Logika Highlight Panggilan Baru
+        document.addEventListener('DOMContentLoaded', () => {
+            let lastCalled = JSON.parse(localStorage.getItem('lastCalledDisplay')) || {};
+            let hasNewCall = false;
 
-            CALLING_ANTRIAN_DATA.forEach(antrian => {
+            callingData.forEach(antrian => {
                 const poliId = antrian.poli_id;
-                const currentCallTime = antrian.waktu_dipanggil; 
+                const callTime = antrian.waktu_dipanggil;
 
-                if (lastCalled[poliId] !== currentCallTime) {
-                    
-                    announceQueue(antrian); // Panggil Notifikasi Suara
+                // Jika waktu panggil beda dengan yang di storage, berarti baru
+                if (lastCalled[poliId] !== callTime) {
+                    hasNewCall = true;
+                    lastCalled[poliId] = callTime;
 
-                    const card = document.querySelector(`[data-poli-id="${poliId}"][data-nomor-antrian="${antrian.nomor_antrian}"] .main-display-card`);
+                    // Cari elemen card dan tambahkan efek
+                    const card = document.querySelector(`[data-poli-id="${poliId}"] .card-calling`);
                     if (card) {
                         card.classList.add('highlight-call');
-                        setTimeout(() => {
-                            card.classList.remove('highlight-call');
-                            card.style.transform = 'scale(1)';
-                        }, 5000); 
+                        
+                        // Text to Speech
+                        if ('speechSynthesis' in window) {
+                            // Tunggu user interaction policy (kadang butuh klik dulu di browser modern)
+                            const msg = new SpeechSynthesisUtterance(`Nomor Antrian ${antrian.nomor_antrian}, Silakan ke ${antrian.nama_poli}`);
+                            msg.lang = 'id-ID';
+                            msg.rate = 0.9;
+                            window.speechSynthesis.speak(msg);
+                        }
                     }
-                    
-                    lastCalled[poliId] = currentCallTime;
                 }
             });
 
-            if (CALLING_ANTRIAN_DATA.length > 0) {
-                localStorage.setItem('lastCalledQueue', JSON.stringify(lastCalled));
-            } else {
-                 localStorage.removeItem('lastCalledQueue');
+            // Mainkan bell jika ada panggilan baru
+            if (hasNewCall && audio) {
+                audio.play().catch(e => console.log("Audio autoplay blocked:", e));
             }
-        }
 
-
-        // --- IDE #3: Rotasi Konten/Pesan ---
-        const MESSAGES = [
-            "⚠️ PERHATIAN: Pastikan nomor antrian Anda sudah sesuai dengan poli tujuan. Kesalahan nomor antrian menjadi tanggung jawab pasien.",
-            "🕒 Jam Pelayanan Rawat Jalan dimulai dari jam 08.00 sampai dengan 14.00 WIB.",
-            "📱 Silakan nonaktifkan mode dering ponsel selama berada di area pemeriksaan.",
-            "💉 Untuk pemeriksaan laboratorium, puasa atau persiapan khusus lainnya harap ditaati sesuai instruksi dokter.",
-            "Terima kasih atas kesabaran Anda menunggu. Kami berkomitmen memberikan layanan terbaik."
-        ];
-        let currentMessageIndex = 0;
-
-        function rotateMessage() {
-            if (rotatingMessageElement) {
-                const message = MESSAGES[currentMessageIndex];
-                rotatingMessageElement.textContent = message;
-                rotatingMessageElement.classList.remove('scroll-text-content');
-                // Force reflow/redraw
-                void rotatingMessageElement.offsetWidth; 
-                rotatingMessageElement.classList.add('scroll-text-content');
-
-                currentMessageIndex = (currentMessageIndex + 1) % MESSAGES.length;
+            // Simpan state terbaru
+            if (callingData.length > 0) {
+                localStorage.setItem('lastCalledDisplay', JSON.stringify(lastCalled));
             }
-        }
-
-        // --- IDE #4: Update Jam Real-time (agar tidak perlu refresh untuk jam) ---
-        function updateTime() {
-            const now = new Date();
-            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-            const dateStr = now.toLocaleDateString('id-ID', options);
-            const timeStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            
-            if (currentDateTimeElement) {
-                currentDateTimeElement.innerHTML = `<i class="bi bi-calendar-check me-2"></i> ${dateStr} | ${timeStr} WIB`;
-            }
-        }
-        
-        // --- INIT & EKSEKUSI ---
-        
-        document.addEventListener('DOMContentLoaded', () => {
-            checkAndHighlightNewCalls();
-            
-            updateTime();
-            setInterval(updateTime, 1000);
-
-            rotateMessage();
-            setInterval(rotateMessage, 15000);
         });
-        
     </script>
 </body>
 </html>
-
-<?php mysqli_close($conn); ?>

@@ -1,55 +1,62 @@
 <?php
 session_start();
 
-// Autentikasi dan Cek Role (Asumsi: Hanya Admin/Super Admin yang boleh akses laporan)
+// --- 1. OTENTIKASI & LOGIKA DATABASE ---
+
+// Cek Login
 if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== true) {
     header("Location: login.php");
     exit();
 }
 
-$allowed_roles = ['Super Admin', 'Front Office']; // Tambahkan role yang diizinkan
-if (!in_array($_SESSION['role'], $allowed_roles)) {
-    echo '<!DOCTYPE html><html lang="id"><head><title>Akses Ditolak</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"></head><body class="bg-light d-flex align-items-center justify-content-center" style="min-height: 100vh;"><div class="card p-5 shadow-lg"><h3 class="text-danger">Akses Ditolak 🛑</h3><p>Maaf, peran Anda (**' . $_SESSION['role'] . '**), tidak diizinkan mengakses halaman ini.</p><a href="dashboard.php" class="btn btn-primary">Kembali</a></div></body></html>';
+// Cek Role
+$allowed_roles = ['Super Admin', 'Front Office'];
+if (!isset($_SESSION['role']) || !in_array($_SESSION['role'], $allowed_roles)) {
+    echo '<!DOCTYPE html><html lang="id"><head><title>Akses Ditolak</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body class="bg-light d-flex align-items-center justify-content-center px-3" style="min-height: 100vh;"><div class="card p-4 shadow-lg w-100" style="max-width:400px"><h3 class="text-danger">Akses Ditolak 🛑</h3><p>Maaf, peran Anda tidak diizinkan mengakses halaman ini.</p><a href="javascript:history.back()" class="btn btn-primary w-100">Kembali</a></div></body></html>';
     exit();
 }
 
-include "koneksi.php"; // Ganti "koneksi.php" jika nama file koneksi Anda berbeda
+include "koneksi.php";
 
-// Definisikan variabel sesi untuk Navbar
-$nama_lengkap_admin = htmlspecialchars($_SESSION['nama_lengkap'] ?? 'Admin');
-$role_admin = htmlspecialchars($_SESSION['role'] ?? 'Super Admin');
-
-// --- HELPER FUNCTION: DIPINDAHKAN DI SINI UNTUK MENGHINDARI FATAL ERROR REDECLARATION ---
-// Helper function untuk Badge Status
-function get_report_status_badge($status) {
-    switch ($status) {
-        case 'Terverifikasi': return '<span class="badge bg-success">Terverifikasi</span>';
-        case 'Menunggu Verifikasi': return '<span class="badge bg-warning text-dark">Menunggu Verifikasi</span>';
-        case 'Dibatalkan': return '<span class="badge bg-danger">Dibatalkan</span>';
-        case 'Selesai': return '<span class="badge bg-primary">Selesai</span>';
-        default: return '<span class="badge bg-secondary">' . $status . '</span>';
+// Helper Input
+if (!function_exists('escape_input')) {
+    function escape_input($conn, $data) {
+        return mysqli_real_escape_string($conn, trim($data));
     }
 }
-// --- END HELPER FUNCTION ---
 
-// --- MENU ITEMS UNTUK NAV BAR (DIAMBIL DARI FRONTOFFICE DASHBOARD) ---
+// Helper Badge Status
+function get_report_status_badge($status) {
+    switch ($status) {
+        case 'Terverifikasi': return '<span class="badge rounded-pill bg-success"><i class="bi bi-check-circle me-1"></i>Ok</span>';
+        case 'Menunggu Verifikasi': return '<span class="badge rounded-pill bg-warning text-dark"><i class="bi bi-hourglass-split me-1"></i>Tunggu</span>';
+        case 'Dibatalkan': return '<span class="badge rounded-pill bg-danger"><i class="bi bi-x-circle me-1"></i>Batal</span>';
+        case 'Selesai': return '<span class="badge rounded-pill bg-primary"><i class="bi bi-flag-fill me-1"></i>Selesai</span>';
+        default: return '<span class="badge rounded-pill bg-secondary">' . $status . '</span>';
+    }
+}
+
+// Variabel Sesi
+$nama_lengkap_admin = htmlspecialchars($_SESSION['nama_lengkap'] ?? 'User');
+$role_admin = htmlspecialchars($_SESSION['role'] ?? 'Guest');
+$current_file = basename($_SERVER['PHP_SELF']);
+
+// Menu Sidebar
 $menu_items = [
+    [ 'title' => 'Dashboard FO', 'icon' => 'bi-speedometer2', 'link' => 'frontoffice_dashboard.php' ],
     [ 'title' => 'Daftar Pasien', 'icon' => 'bi-people-fill', 'link' => 'pasien_list.php' ],
-    [ 'title' => 'Manajemen Pendaftaran', 'icon' => 'bi-file-earmark-spreadsheet-fill', 'link' => 'pendaftaran_list.php' ],
-    [ 'title' => 'Pemanggilan Antrian', 'icon' => 'bi-telephone-fill', 'link' => 'antrian_call.php' ],
-    [ 'title' => 'Laporan Pendaftaran', 'icon' => 'bi-bar-chart-fill', 'link' => 'report.php' ],
+    [ 'title' => 'Pendaftaran', 'icon' => 'bi-file-earmark-spreadsheet-fill', 'link' => 'pendaftaran_list.php' ],
+    [ 'title' => 'Antrian Panggil', 'icon' => 'bi-telephone-fill', 'link' => 'antrian_call.php' ],
+    [ 'title' => 'Laporan', 'icon' => 'bi-bar-chart-fill', 'link' => 'report.php' ],
 ];
-// --- END MENU ITEMS ---
 
-// Default tanggal
-// Catatan: Asumsi fungsi `escape_input` sudah didefinisikan dalam `koneksi.php` atau file lain yang di-include.
+// --- LOGIKA FILTER LAPORAN ---
 $tgl_mulai = isset($_POST['tgl_mulai']) ? escape_input($conn, $_POST['tgl_mulai']) : date('Y-m-01');
 $tgl_akhir = isset($_POST['tgl_akhir']) ? escape_input($conn, $_POST['tgl_akhir']) : date('Y-m-d');
 $report_result = null;
 $total_rows = 0;
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    // Query Laporan Pendaftaran berdasarkan tanggal rencana periksa
     $sql_report = "SELECT 
                       p.tgl_rencana_periksa, p.jenis_pendaftaran, p.status_pendaftaran, p.tgl_waktu_input,
                       s.nama_lengkap AS nama_pasien, s.no_rekam_medis, 
@@ -70,100 +77,225 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Laporan Pendaftaran Pasien | RS Jiwa</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" xintegrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Laporan Pendaftaran | RS Jiwa</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
     <style>
+        :root {
+            --sidebar-width: 260px;
+            --sidebar-bg: #1f2a38; 
+            --sidebar-color: #f8f9fa;
+            --primary-highlight: #0d6efd; 
+            --main-font: 'Poppins', sans-serif; 
+            --heading-font: 'Montserrat', sans-serif;
+        }
+
         body {
+            background-color: #f0f2f5; 
+            font-family: var(--main-font); 
+            overflow-x: hidden; /* Mencegah scroll horizontal */
+        }
+        h1, h2, h3, h4, h5 { font-family: var(--heading-font); }
+
+        /* --- LAYOUT WRAPPER & SIDEBAR (RESPONSIVE) --- */
+        #wrapper {
+            display: flex;
+            width: 100%;
+            align-items: stretch;
+            transition: all 0.3s;
+        }
+
+        #sidebar-wrapper {
+            min-width: var(--sidebar-width);
+            max-width: var(--sidebar-width);
+            background: var(--sidebar-bg);
+            color: var(--sidebar-color);
+            transition: all 0.3s;
+            position: fixed;
+            height: 100vh;
+            z-index: 1050; /* Di atas konten */
+            left: calc(var(--sidebar-width) * -1); /* Hidden default di mobile */
+            overflow-y: auto;
+        }
+
+        #page-content-wrapper {
+            width: 100%;
+            min-height: 100vh;
+            transition: all 0.3s;
             display: flex;
             flex-direction: column;
-            min-height: 100vh;
-            background-color: #f8f9fa;
-            padding-top: 56px;
         }
-        .content-wrapper {
-            flex: 1;
-            padding: 20px 0;
+
+        /* --- LOGIKA MEDIA QUERIES --- */
+        
+        /* Desktop (Layar Besar) */
+        @media (min-width: 992px) {
+            #sidebar-wrapper { left: 0; } /* Muncul default di desktop */
+            #page-content-wrapper { margin-left: var(--sidebar-width); }
+            
+            /* Logic Toggled Desktop (Hide Sidebar) */
+            #wrapper.toggled #sidebar-wrapper { margin-left: calc(var(--sidebar-width) * -1); }
+            #wrapper.toggled #page-content-wrapper { margin-left: 0; }
         }
-        .nav-link.active-menu {
-            border-bottom: 3px solid #ffc107; /* Warna kuning */
-            font-weight: bold;
+
+        /* Mobile (Layar Kecil) */
+        @media (max-width: 991px) {
+            /* Logic Toggled Mobile (Show Sidebar Overlay) */
+            #wrapper.toggled #sidebar-wrapper { left: 0; box-shadow: 5px 0 15px rgba(0,0,0,0.3); }
+            #wrapper.toggled #page-content-wrapper { margin-left: 0; } /* Konten tidak geser */
         }
+
+        /* Sidebar Styling */
+        .sidebar-heading {
+            padding: 1.5rem 1rem; 
+            font-size: 1.25rem;
+            color: var(--primary-highlight);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            font-weight: 700;
+            text-align: center;
+        }
+        .list-group-item {
+            background: transparent;
+            color: rgba(255,255,255,0.8);
+            border: none;
+            padding: 12px 20px;
+        }
+        .list-group-item:hover {
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+        }
+        .list-group-item.active-menu {
+            background: rgba(13, 110, 253, 0.15);
+            color: var(--primary-highlight);
+            border-left: 4px solid var(--primary-highlight);
+            font-weight: 600;
+        }
+
+        /* Backdrop Gelap untuk Mobile */
+        #overlay-backdrop {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1040;
+            backdrop-filter: blur(2px);
+        }
+        #wrapper.toggled #overlay-backdrop { display: block; }
+        @media (min-width: 992px) {
+            #wrapper.toggled #overlay-backdrop { display: none !important; }
+        }
+
+        /* Navbar & Content */
+        .navbar-top {
+            background-color: white !important;
+            box-shadow: 0 2px 10px rgba(0,0,0,.05);
+            padding: 10px 20px;
+            z-index: 1020;
+        }
+        
+        .main-content { padding: 20px; }
+        @media (min-width: 768px) { .main-content { padding: 30px; } }
+
+        /* Card Custom */
+        .card-custom {
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+            background-color: white;
+            margin-bottom: 25px;
+        }
+        .card-header-custom {
+            background-color: white;
+            border-bottom: 1px solid #e9ecef;
+            padding: 15px 20px;
+            border-radius: 12px 12px 0 0 !important;
+        }
+        .card-body { padding: 20px; }
+
+        /* Table Responsive Tweaks */
+        .table-responsive {
+            white-space: nowrap; /* Mencegah teks turun ke bawah, memaksa scroll horizontal */
+        }
+        .table th, .table td { vertical-align: middle; }
     </style>
 </head>
 <body>
 
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="frontoffice_dashboard.php">
-                **Front Office Panel**
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavFO" aria-controls="navbarNavFO" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNavFO">
-                
-                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                    <li class="nav-item">
-                        <a class="nav-link" href="frontoffice_dashboard.php">
-                            <i class="bi bi-house-door-fill me-1"></i> Dashboard
-                        </a>
-                    </li>
-                    <?php 
-                    $current_path = basename($_SERVER['PHP_SELF']); 
-                    foreach ($menu_items as $item): 
-                    ?>
-                        <li class="nav-item">
-                            <a class="nav-link <?php echo ($item['link'] == $current_path) ? 'active-menu' : ''; ?>" href="<?php echo $item['link']; ?>">
-                                <i class="bi <?php echo $item['icon']; ?> me-1"></i> <?php echo $item['title']; ?>
-                            </a>
-                        </li>
-                    <?php endforeach; ?>
-                </ul>
+<div id="wrapper">
 
-                <ul class="navbar-nav">
-                    <li class="nav-item">
-                        <span class="nav-link text-warning">Halo, **<?php echo $nama_lengkap_admin; ?>** (<?php echo $role_admin; ?>)</span>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link btn btn-sm btn-outline-danger ms-2" href="logout.php">Logout</a>
-                    </li>
-                </ul>
-            </div>
+    <div id="overlay-backdrop"></div>
+
+    <div id="sidebar-wrapper">
+        <div class="sidebar-heading">
+            <i class="bi bi-hospital me-2"></i> FRONT OFFICE
         </div>
-    </nav>
-    <div class="content-wrapper">
-        <div class="container-fluid">
-            
-            <a href="dashboard.php" class="btn btn-sm btn-outline-secondary mb-4">
-                &larr; Kembali ke Dashboard
-            </a>
+        <div class="list-group list-group-flush mt-2">
+            <?php foreach ($menu_items as $item): 
+                $active_class = ($item['link'] == $current_file) ? 'active-menu' : '';
+            ?>
+                <a href="<?php echo $item['link']; ?>" class="list-group-item list-group-item-action <?php echo $active_class; ?>">
+                    <i class="bi <?php echo $item['icon']; ?> me-2"></i> <?php echo $item['title']; ?>
+                </a>
+            <?php endforeach; ?>
+        </div>
+        
+        <div class="mt-auto p-3 mb-3">
+             <a class="btn w-100 fw-bold" href="logout.php" style="background-color: var(--primary-highlight); color: white;">
+                 <i class="bi bi-box-arrow-right me-2"></i> Logout
+             </a>
+        </div>
+    </div>
 
-            <div class="card shadow-lg mb-4">
-                <div class="card-header bg-primary text-white">
-                    <h3 class="mb-0">📑 Laporan Detail Pendaftaran Pasien</h3>
+    <div id="page-content-wrapper">
+        
+        <nav class="navbar navbar-expand-lg navbar-light navbar-top sticky-top">
+            <div class="container-fluid px-0">
+                <button class="btn btn-light border shadow-sm" id="sidebarToggle">
+                    <i class="bi bi-list fs-5"></i>
+                </button>
+
+                <div class="ms-auto d-flex align-items-center">
+                    <div class="d-none d-md-block text-end me-3">
+                        <span class="d-block fw-bold small text-dark"><?php echo $nama_lengkap_admin; ?></span>
+                        <span class="d-block text-muted" style="font-size: 0.75rem;"><?php echo $role_admin; ?></span>
+                    </div>
+                    <div class="bg-light rounded-circle d-flex align-items-center justify-content-center border" style="width: 38px; height: 38px;">
+                        <i class="bi bi-person-fill text-secondary"></i>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <div class="main-content">
+            
+            <div class="mb-4">
+                <h3 class="fw-bold text-dark mb-1">Laporan Pendaftaran</h3>
+                <p class="text-muted small mb-0">Rekap data pasien berdasarkan periode.</p>
+            </div>
+
+            <div class="card card-custom">
+                <div class="card-header-custom">
+                    <h6 class="mb-0 fw-bold text-primary"><i class="bi bi-funnel me-2"></i>Filter Data</h6>
                 </div>
                 <div class="card-body">
-                    
-                    <form method="post" action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]);?>" class="row g-3 align-items-end">
-                        <div class="col-md-4">
-                            <label for="tgl_mulai" class="form-label">Tanggal Mulai Rencana Periksa</label>
+                    <form method="post" action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]);?>" class="row g-3">
+                        <div class="col-12 col-md-4">
+                            <label for="tgl_mulai" class="form-label small fw-bold text-muted">Dari Tanggal</label>
                             <input type="date" class="form-control" id="tgl_mulai" name="tgl_mulai" value="<?php echo htmlspecialchars($tgl_mulai); ?>" required>
                         </div>
                         
-                        <div class="col-md-4">
-                            <label for="tgl_akhir" class="form-label">Tanggal Akhir Rencana Periksa</label>
+                        <div class="col-12 col-md-4">
+                            <label for="tgl_akhir" class="form-label small fw-bold text-muted">Sampai Tanggal</label>
                             <input type="date" class="form-control" id="tgl_akhir" name="tgl_akhir" value="<?php echo htmlspecialchars($tgl_akhir); ?>" required>
                         </div>
                         
-                        <div class="col-md-4">
-                            <button type="submit" class="btn btn-success w-100">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-filter-square me-2" viewBox="0 0 16 16">
-                                    <path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h12zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2z"/>
-                                    <path d="m6.646 11.854.646-.646A.5.5 0 0 0 8 11.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 0 .146.354zM3.5 5h9a.5.5 0 0 0 0-1h-9a.5.5 0 0 0 0 1z"/>
-                                </svg>
-                                Tampilkan Laporan
+                        <div class="col-12 col-md-4 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary w-100 fw-bold">
+                                <i class="bi bi-search me-2"></i> Tampilkan
                             </button>
                         </div>
                     </form>
@@ -171,20 +303,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             </div>
 
             <?php if ($_SERVER["REQUEST_METHOD"] == "POST"): ?>
-                <div class="card shadow-lg">
-                    <div class="card-header bg-info text-white">
-                        <h5 class="mb-0">Hasil Laporan (<?php echo date('d M Y', strtotime($tgl_mulai)); ?> s/d <?php echo date('d M Y', strtotime($tgl_akhir)); ?>)</h5>
+                <div class="card card-custom">
+                    <div class="card-header-custom d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+                        <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-table me-2"></i>Hasil Pencarian</h6>
+                        <span class="badge bg-light text-dark border">
+                            <?php echo date('d/m/y', strtotime($tgl_mulai)); ?> - <?php echo date('d/m/y', strtotime($tgl_akhir)); ?>
+                        </span>
                     </div>
-                    <div class="card-body">
+                    <div class="card-body p-0">
+                        
                         <?php if ($report_result && $total_rows > 0): ?>
-                            <p class="text-success fw-bold">Ditemukan **<?php echo $total_rows; ?>** data pendaftaran.</p>
                             <div class="table-responsive">
-                                <table class="table table-bordered table-striped table-hover align-middle" style="width: 100%;">
-                                    <thead class="table-dark">
+                                <table class="table table-hover align-middle mb-0" style="min-width: 800px;"> <thead class="table-light text-secondary small text-uppercase">
                                         <tr>
-                                            <th>Tgl Rencana</th>
+                                            <th class="ps-4">Tgl Rencana</th>
                                             <th>Pasien (RM)</th>
-                                            <th>Poli</th>
+                                            <th>Poli Tujuan</th>
                                             <th>Jenis</th>
                                             <th>Status</th>
                                             <th>Waktu Input</th>
@@ -192,51 +326,85 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                                     </thead>
                                     <tbody>
                                         <?php while($row = mysqli_fetch_assoc($report_result)): ?>
-                                            
-                                            <!-- Panggilan fungsi yang telah didefinisikan di luar loop -->
                                             <tr>
-                                                <td><?php echo $row['tgl_rencana_periksa']; ?></td>
-                                                <td><?php echo htmlspecialchars($row['nama_pasien']); ?> (<small class='text-muted'><?php echo htmlspecialchars($row['no_rekam_medis'] ?? '-'); ?></small>)</td>
-                                                <td><span class="badge bg-info text-dark"><?php echo htmlspecialchars($row['nama_poli']); ?></span></td>
+                                                <td class="ps-4 fw-bold text-secondary">
+                                                    <?php echo date('d M Y', strtotime($row['tgl_rencana_periksa'])); ?>
+                                                </td>
+                                                <td>
+                                                    <div class="fw-bold text-dark"><?php echo htmlspecialchars($row['nama_pasien']); ?></div>
+                                                    <small class="text-muted" style="font-size: 0.75rem;">RM: <?php echo htmlspecialchars($row['no_rekam_medis'] ?? '-'); ?></small>
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-soft-primary text-primary border border-primary bg-light">
+                                                        <?php echo htmlspecialchars($row['nama_poli']); ?>
+                                                    </span>
+                                                </td>
                                                 <td><?php echo $row['jenis_pendaftaran']; ?></td>
                                                 <td><?php echo get_report_status_badge($row['status_pendaftaran']); ?></td>
-                                                <td><?php echo date('d/m/y H:i', strtotime($row['tgl_waktu_input'])); ?></td>
+                                                <td class="text-muted small">
+                                                    <?php echo date('H:i', strtotime($row['tgl_waktu_input'])); ?>
+                                                </td>
                                             </tr>
                                         <?php endwhile; ?>
                                     </tbody>
                                 </table>
                             </div>
-                            <?php 
-                            if ($report_result) {
-                                mysqli_free_result($report_result);
-                            }
-                            ?>
+                            <div class="card-footer bg-white border-top text-center text-md-end py-3">
+                                <span class="fw-bold text-dark small">Total Data: <?php echo $total_rows; ?></span>
+                            </div>
                         <?php else: ?>
-                            <div class="alert alert-warning text-center">
-                                Tidak ditemukan data pendaftaran dalam rentang tanggal tersebut.
+                            <div class="p-5 text-center">
+                                <i class="bi bi-clipboard-x display-4 text-muted opacity-50"></i>
+                                <p class="mt-3 text-muted fw-bold">Tidak ditemukan data.</p>
                             </div>
                         <?php endif; ?>
-                    </div>
-                    <div class="card-footer text-muted text-end">
-                        Total Data: <?php echo $total_rows; ?>
+
                     </div>
                 </div>
             <?php else: ?>
-                <div class="alert alert-info text-center">
-                    Silakan pilih rentang tanggal dan klik **"Tampilkan Laporan"** di atas untuk melihat data pendaftaran.
+                <div class="text-center p-5 text-muted bg-white rounded-3 shadow-sm border">
+                    <i class="bi bi-arrow-up-circle display-4 text-primary opacity-50"></i>
+                    <p class="mt-3 mb-0 fw-bold">Silakan filter tanggal di atas.</p>
                 </div>
             <?php endif; ?>
 
         </div>
+        
+        <footer class="mt-auto py-3 bg-white text-center border-top">
+            <span class="text-muted small">&copy; <?php echo date("Y"); ?> RS Jiwa.</span>
+        </footer>
     </div>
-    
-    <footer class="footer mt-auto py-3 bg-dark">
-        <div class="container text-center">
-            <span class="text-white">&copy; <?php echo date("Y"); ?> RS Jiwa. Hak Cipta Dilindungi.</span>
-        </div>
-    </footer>
+</div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" xintegrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var sidebarToggle = document.getElementById('sidebarToggle');
+        var wrapper = document.getElementById('wrapper');
+        var backdrop = document.getElementById('overlay-backdrop');
+
+        // Fungsi Toggle Sidebar
+        function toggleSidebar() {
+            wrapper.classList.toggle('toggled');
+        }
+
+        sidebarToggle.addEventListener('click', function(e) {
+            e.preventDefault();
+            toggleSidebar();
+        });
+
+        // Event: Klik Backdrop untuk menutup menu di Mobile
+        backdrop.addEventListener('click', function() {
+            if (window.innerWidth < 992) { // Hanya aktif di mobile
+                wrapper.classList.remove('toggled');
+            }
+        });
+    });
+</script>
 </body>
 </html>
-<?php mysqli_close($conn); ?>
+
+<?php 
+if (isset($report_result) && $report_result) mysqli_free_result($report_result);
+if (isset($conn)) mysqli_close($conn); 
+?>

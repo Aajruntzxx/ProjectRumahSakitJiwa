@@ -2,14 +2,12 @@
 session_start();
 
 // --- KONEKSI DATABASE ---
-// Asumsi file koneksi.php menyediakan $conn
 include "koneksi.php"; 
 // -----------------------
 
 // 1. Cek Otentikasi dan Role
 if (!isset($_SESSION['admin_logged_in']) || ($_SESSION['role'] ?? '') !== 'Dokter') {
-    // Tampilan Akses Ditolak
-    echo '<!DOCTYPE html><html lang="id"><head><title>Akses Ditolak</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"></head><body class="bg-light d-flex align-items-center justify-content-center" style="min-height: 100vh;"><div class="card p-5 shadow-lg"><h3 class="text-danger">Akses Ditolak 🛑</h3><p>Anda tidak memiliki izin mengakses halaman ini.</p><a href="login.php" class="btn btn-primary">Halaman Login</a></div></body></html>';
+    echo '<!DOCTYPE html><html lang="id"><head><title>Akses Ditolak</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body class="bg-light d-flex align-items-center justify-content-center px-3" style="min-height: 100vh;"><div class="card p-4 shadow-lg w-100" style="max-width:400px"><h3 class="text-danger">Akses Ditolak 🛑</h3><p>Anda tidak memiliki izin mengakses halaman ini.</p><a href="login.php" class="btn btn-primary w-100">Halaman Login</a></div></body></html>';
     mysqli_close($conn);
     exit();
 }
@@ -17,12 +15,12 @@ if (!isset($_SESSION['admin_logged_in']) || ($_SESSION['role'] ?? '') !== 'Dokte
 // Definisikan variabel sesi dan login
 $nama_lengkap_admin = htmlspecialchars($_SESSION['nama_lengkap'] ?? 'Dokter');
 $role_admin = htmlspecialchars($_SESSION['role'] ?? 'Dokter');
+$current_file = basename($_SERVER['PHP_SELF']);
 $admin_id_login = $_SESSION['admin_id'];
 $today = date('Y-m-d');
 $hari_ini = date('N'); // 1 (Senin) hingga 7 (Minggu)
 $hari_map = [1 => 'Senin', 2 => 'Selasa', 3 => 'Rabu', 4 => 'Kamis', 5 => 'Jumat', 6 => 'Sabtu', 7 => 'Minggu'];
 $hari_praktik = $hari_map[$hari_ini];
-
 
 $dokter_info = [];
 $dokter_id_login = 0;
@@ -67,7 +65,6 @@ if ($stmt = mysqli_prepare($conn, $sql_dokter_info)) {
     $error_message = "Database error: " . mysqli_error($conn);
 }
 
-
 // 3. Ambil Statistik Layanan Medis Dokter Hari Ini
 if ($dokter_id_login > 0) {
     // Total Pasien Selesai Hari Ini
@@ -95,19 +92,14 @@ if ($dokter_id_login > 0) {
     }
 }
 
-
 // 4. Query Antrian Aktif di Poli Dokter Hari Ini
 $antrian_aktif = [];
 if (!empty($poli_ids_hari_ini)) {
     // Gunakan placeholder (?) untuk setiap ID
     $placeholders = implode(',', array_fill(0, count($poli_ids_hari_ini), '?'));
-    $types = str_repeat('i', count($poli_ids_hari_ini)); // Semua ID adalah integer
-    
-    // Perlu menambahkan today ($s)
-    $types = 's' . $types;
-    // Persiapan array untuk bind_param
+    $types = str_repeat('i', count($poli_ids_hari_ini)); 
+    $types = 's' . $types; // Tambah tipe string untuk $today
     $bind_params = array_merge([$types, $today], $poli_ids_hari_ini);
-
 
     $sql_antrian_aktif = "SELECT 
                             a.antrian_id, a.nomor_antrian, a.status_antrian, a.waktu_dipanggil,
@@ -122,9 +114,7 @@ if (!empty($poli_ids_hari_ini)) {
                             ORDER BY FIELD(a.status_antrian, 'Sedang Periksa', 'Dipanggil', 'Menunggu'), a.antrian_id ASC";
     
     if ($stmt = mysqli_prepare($conn, $sql_antrian_aktif)) {
-        // Binding parameters dynamically
         $ref_array = [];
-        // Perlu memecah $bind_params untuk referensi karena call_user_func_array
         foreach ($bind_params as $key => $value) {
             $ref_array[$key] = &$bind_params[$key];
         }
@@ -144,436 +134,383 @@ if (!empty($poli_ids_hari_ini)) {
 
 // Menu items untuk Sidebar
 $menu_items = [
-    [
-        'title' => 'Home/Dashboard',
-        'icon' => 'bi-house-door-fill',
-        'link' => 'dokter_dashboard.php',
-        'active' => true 
-    ],
-    [
-        'title' => 'Monitor Antrian',
-        'icon' => 'bi-telephone-fill',
-        'link' => 'antrian_call.php',
-        'active' => false
-    ],
-    [
-        'title' => 'Rekam Medis Pasien',
-        'icon' => 'bi-journal-medical',
-        'link' => 'rekam_medis.php', // Asumsi ada halaman ini
-        'active' => false
-    ],
+    [ 'title' => 'Dashboard Dokter', 'icon' => 'bi-house-door-fill', 'link' => 'dokter_dashboard.php', 'active' => true ],
+    [ 'title' => 'Monitor Antrian', 'icon' => 'bi-telephone-fill', 'link' => 'antrian_call.php', 'active' => false ],
+    [ 'title' => 'Rekam Medis', 'icon' => 'bi-journal-medical', 'link' => 'rekam_medis.php', 'active' => false ],
 ];
 
-
-// Tutup koneksi sebelum output HTML
 mysqli_close($conn);
 ?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Dashboard Dokter | RS Jiwa</title>
+    
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
-        /* Font dan Warna Modern */
         :root {
-            --sidebar-width: 250px;
-            --sidebar-bg: #1f2a38; /* Warna gelap yang sedikit lebih biru */
+            --sidebar-width: 260px;
+            --sidebar-bg: #1f2a38; 
             --sidebar-color: #f8f9fa;
-            --primary-highlight: #00bcd4; /* Teal/Cyan modern */
+            --primary-highlight: #198754; 
             --main-font: 'Poppins', sans-serif; 
             --heading-font: 'Montserrat', sans-serif;
-            --navbar-bg: #1f2a38;
         }
+
         body {
-            font-family: var(--main-font); 
             background-color: #f0f2f5; 
+            font-family: var(--main-font); 
             overflow-x: hidden;
         }
-        h1, h2, h3, h4, h5, h6 {
-            font-family: var(--heading-font);
-        }
+        h1, h2, h3, h4, h5 { font-family: var(--heading-font); }
 
-        /* --- Layout Wrapper (Sidebar + Content) --- */
+        /* --- LAYOUT WRAPPER & SIDEBAR RESPONSIVE --- */
         #wrapper {
             display: flex;
+            width: 100%;
+            align-items: stretch;
+            transition: all 0.3s;
         }
-        
-        /* Gaya Sidebar */
+
         #sidebar-wrapper {
-            min-height: 100vh;
-            margin-left: calc(var(--sidebar-width) * -1);
-            transition: margin 0.25s ease-out;
-            width: var(--sidebar-width);
-            background-color: var(--sidebar-bg);
+            min-width: var(--sidebar-width);
+            max-width: var(--sidebar-width);
+            background: var(--sidebar-bg);
             color: var(--sidebar-color);
+            transition: all 0.3s;
             position: fixed;
-            z-index: 1030;
-            display: flex; /* Untuk menempatkan logout di bawah */
-            flex-direction: column;
+            height: 100vh;
+            z-index: 1050; /* Di atas konten */
+            left: calc(var(--sidebar-width) * -1); /* Hidden Mobile Default */
+            overflow-y: auto;
         }
-        #wrapper.toggled #sidebar-wrapper {
-            margin-left: 0;
-        }
-        
+
         #page-content-wrapper {
             width: 100%;
-            padding: 0; /* Padding di dalam container-fluid */
-            transition: margin-left 0.25s ease-out;
+            min-height: 100vh;
+            transition: all 0.3s;
+            display: flex;
+            flex-direction: column;
         }
 
-        /* Terapkan hanya pada layar besar */
+        /* Desktop View */
         @media (min-width: 992px) {
-            #sidebar-wrapper {
-                margin-left: 0;
-            }
-            #page-content-wrapper {
-                margin-left: var(--sidebar-width);
-                padding-left: 0; /* Padding di dalam container-fluid */
-            }
-            #wrapper.toggled #sidebar-wrapper {
-                margin-left: calc(var(--sidebar-width) * -1);
-            }
-            #wrapper.toggled #page-content-wrapper {
-                margin-left: 0;
-            }
+            #sidebar-wrapper { left: 0; }
+            #page-content-wrapper { margin-left: var(--sidebar-width); }
+            
+            #wrapper.toggled #sidebar-wrapper { margin-left: calc(var(--sidebar-width) * -1); }
+            #wrapper.toggled #page-content-wrapper { margin-left: 0; }
         }
 
-        /* Gaya Navigasi Sidebar */
+        /* Mobile View */
+        @media (max-width: 991px) {
+            #wrapper.toggled #sidebar-wrapper { left: 0; box-shadow: 5px 0 15px rgba(0,0,0,0.3); }
+            #wrapper.toggled #page-content-wrapper { margin-left: 0; }
+        }
+
+        /* Sidebar Styling */
         .sidebar-heading {
-            padding: 1.5rem 1.25rem;
-            font-size: 1.3rem;
+            padding: 1.5rem 1rem; 
+            font-size: 1.25rem;
             color: var(--primary-highlight);
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             font-weight: 700;
+            text-align: center;
         }
         .list-group-item {
+            background: transparent;
+            color: rgba(255,255,255,0.8);
             border: none;
-            background-color: var(--sidebar-bg);
-            color: var(--sidebar-color);
-            padding: 0.8rem 1.25rem;
-            transition: background-color 0.2s, color 0.2s;
-            font-weight: 500;
+            padding: 12px 20px;
         }
-        .list-group-item:hover {
-            background-color: #2c3a50; 
-            color: white;
-        }
+        .list-group-item:hover { background: rgba(255,255,255,0.05); color: #fff; }
         .list-group-item.active-menu {
-            background-color: #2c3a50; 
+            background: rgba(25, 135, 84, 0.15); /* Hijau Transparan */
             color: var(--primary-highlight);
-            border-left: 5px solid var(--primary-highlight);
+            border-left: 4px solid var(--primary-highlight);
             font-weight: 600;
         }
-        .sidebar-logout {
-             margin-top: auto; /* Mendorong ke bawah */
-             padding: 1rem;
-             border-top: 1px solid rgba(255, 255, 255, 0.1);
+
+        /* Overlay Backdrop */
+        #overlay-backdrop {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1040;
+            backdrop-filter: blur(2px);
         }
-        /* --- End Sidebar Styles --- */
+        #wrapper.toggled #overlay-backdrop { display: block; }
+        @media (min-width: 992px) {
+            #wrapper.toggled #overlay-backdrop { display: none !important; }
+        }
 
-
-        /* Navbar Top (hanya tombol toggle dan info user) */
+        /* Navbar & Content */
         .navbar-top {
             background-color: white !important;
-            box-shadow: 0 4px 10px rgba(0,0,0,.05);
+            box-shadow: 0 2px 10px rgba(0,0,0,.05);
+            padding: 10px 20px;
             z-index: 1020;
-            border-bottom: 3px solid #28a745; /* Garis hijau untuk dokter */
-            position: sticky;
-            top: 0;
         }
+        .main-content { padding: 20px; }
+        @media (min-width: 768px) { .main-content { padding: 30px; } }
 
-        /* Header Section Update */
+        /* Header Section */
         .header-section {
-            background: linear-gradient(45deg, #28a745, #198754); /* Gradient Hijau/Success */
+            background: linear-gradient(45deg, #198754, #20c997); 
             color: white;
-            padding: 40px;
-            border-radius: 15px; 
-            margin-bottom: 30px;
-            box-shadow: 0 10px 30px rgba(40, 167, 69, 0.3);
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 25px;
+            box-shadow: 0 10px 30px rgba(25, 135, 84, 0.3);
+            position: relative;
+            overflow: hidden;
         }
-        .header-section h1 {
-            font-weight: 700;
+        .header-bg-icon {
+            position: absolute;
+            right: -20px;
+            bottom: -30px;
+            font-size: 8rem;
+            opacity: 0.15;
+            transform: rotate(-15deg);
         }
 
-        /* Statistik Card Update */
+        /* Stat Cards */
         .stat-card {
-            border-radius: 12px;
             border: none;
-            box-shadow: 0 6px 15px rgba(0,0,0,0.08); 
-            transition: transform 0.3s, box-shadow 0.3s;
-            overflow: hidden;
-            background-color: white !important;
-            border-left: 5px solid; 
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            background-color: white;
+            transition: transform 0.3s;
             height: 100%;
         }
-        .stat-card:hover {
-             transform: translateY(-3px);
-             box-shadow: 0 10px 25px rgba(0,0,0,0.15);
-        }
-        /* Warna Aksen */
-        .stat-card.bg-success { border-left-color: #28a745; }
-        .stat-card.bg-primary { border-left-color: #0d6efd; }
-        .stat-card.bg-info { border-left-color: #0dcaf0; }
-
-        .stat-title {
-            font-size: 0.8rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            color: #6c757d;
-        }
-        .stat-value {
-            font-size: 2.8rem; 
-            font-family: var(--heading-font);
-            font-weight: 700;
-            line-height: 1.1;
-            color: #343a40;
-        }
-        
-        /* Table Antrian Update */
-        .table-antrian-card {
+        .stat-card:hover { transform: translateY(-3px); }
+        .stat-icon {
+            width: 50px; height: 50px;
             border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 6px 15px rgba(0,0,0,0.05);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.5rem;
         }
-        .table-antrian-card table {
-            margin-bottom: 0;
-        }
-        .table-antrian-card thead {
-            background-color: var(--navbar-bg); 
-            color: white;
-        }
-        .antrian-row {
-            cursor: pointer;
-            transition: background-color 0.2s, transform 0.2s;
-            font-weight: 500;
-        }
-        .antrian-row:hover {
-            background-color: #e9ecef !important;
-            transform: scale(1.005);
-        }
-        .status-Dipanggil { background-color: #fffaeb !important; } 
-        .status-SedangPeriksa { background-color: #dc3545 !important; color: white; font-weight: bold; } 
-        .status-Menunggu { background-color: white !important; }
-        
-        .status-SedangPeriksa td, .status-SedangPeriksa a { color: white !important; }
-        .status-SedangPeriksa .badge { background-color: white !important; color: #dc3545 !important; }
+        .stat-title { font-size: 0.8rem; color: #6c757d; font-weight: 600; text-transform: uppercase; margin-bottom: 5px; }
+        .stat-value { font-size: 1.8rem; font-weight: 700; color: #333; font-family: var(--heading-font); line-height: 1; }
 
-        .antrian-row td h5 {
-            font-family: var(--heading-font);
-            color: #343a40;
-        }
-        .status-SedangPeriksa td h5 {
-            color: white;
-        }
-        .btn-aksi-cepat {
-            border-radius: 50px; 
-            font-weight: 600;
-        }
-        /* Footer */
-        .footer {
-            background-color: #fff !important;
-            border-top: 1px solid #e9ecef !important;
-        }
+        /* Table Responsive Tweaks */
+        .table-responsive { white-space: nowrap; }
+        .table th, .table td { vertical-align: middle; }
     </style>
 </head>
 <body>
 
-<div class="d-flex" id="wrapper">
+<div id="wrapper">
+
+    <div id="overlay-backdrop"></div>
 
     <div id="sidebar-wrapper">
-        <div class="sidebar-heading text-center">
-            <i class="bi bi-heart-pulse-fill me-2 text-success"></i> Dokter Panel
+        <div class="sidebar-heading">
+            <i class="bi bi-heart-pulse-fill me-2"></i> DOKTER PANEL
         </div>
-        <div class="list-group list-group-flush">
-            <?php 
-            $current_file = basename($_SERVER['PHP_SELF']);
-
-            foreach ($menu_items as $item): 
-                $is_active = ($item['link'] == $current_file) || (isset($item['active']) && $item['active'] && $current_file == 'dokter_dashboard.php');
+        <div class="list-group list-group-flush mt-2">
+            <?php foreach ($menu_items as $item): 
+                $is_active = ($item['link'] == $current_file) || ($item['active']);
                 $active_class = $is_active ? 'active-menu' : '';
             ?>
-                <a href="<?php echo $item['link']; ?>" 
-                   class="list-group-item list-group-item-action <?php echo $active_class; ?>">
+                <a href="<?php echo $item['link']; ?>" class="list-group-item list-group-item-action <?php echo $active_class; ?>">
                     <i class="bi <?php echo $item['icon']; ?> me-2"></i> <?php echo $item['title']; ?>
                 </a>
             <?php endforeach; ?>
         </div>
-        <div class="sidebar-logout">
-             <a class="btn btn-outline-warning w-100 fw-bold" href="logout.php">
+        
+        <div class="mt-auto p-3 mb-3">
+             <a class="btn w-100 fw-bold" href="logout.php" style="background-color: var(--primary-highlight); color: white;">
                  <i class="bi bi-box-arrow-right me-2"></i> Logout
              </a>
         </div>
     </div>
+
     <div id="page-content-wrapper">
         
-        <nav class="navbar navbar-expand-lg navbar-light navbar-top py-2">
-            <div class="container-fluid">
-                <button class="btn btn-outline-secondary" id="sidebarToggle">
-                    <i class="bi bi-list"></i> Menu
+        <nav class="navbar navbar-expand-lg navbar-light navbar-top sticky-top">
+            <div class="container-fluid px-0">
+                <button class="btn btn-light border shadow-sm" id="sidebarToggle">
+                    <i class="bi bi-list fs-5"></i>
                 </button>
 
-                <div class="d-flex align-items-center">
-                    <span class="navbar-text text-dark me-3 d-none d-md-inline small">
-                        Halo, <b class="fw-bolder"><?php echo $dokter_info['nama_lengkap'] ?? $nama_lengkap_admin; ?></b> (<span class="text-success"><?php echo $role_admin; ?></span>)
-                    </span>
-                    <a class="btn btn-sm btn-danger d-md-none" href="logout.php">
-                            <i class="bi bi-box-arrow-right"></i>
-                    </a>
+                <div class="ms-auto d-flex align-items-center">
+                    <div class="d-none d-md-block text-end me-3">
+                        <span class="d-block fw-bold small text-dark"><?php echo $dokter_info['nama_lengkap'] ?? $nama_lengkap_admin; ?></span>
+                        <span class="d-block text-muted" style="font-size: 0.75rem;"><?php echo $role_admin; ?></span>
+                    </div>
+                    <div class="bg-light rounded-circle d-flex align-items-center justify-content-center border" style="width: 38px; height: 38px;">
+                        <i class="bi bi-person-fill text-secondary"></i>
+                    </div>
                 </div>
             </div>
         </nav>
-        <div class="container-fluid py-4">
+
+        <div class="main-content">
             
-            <div class="header-section text-center">
-                <h1 class="mb-2">👨‍⚕️ Dashboard Dokter</h1>
-                <p class="lead mb-0 fw-light">Jadwal Anda: **<?php echo $hari_praktik; ?>** | Poli: **<?php echo $poli_layanan_info; ?>**</p>
+            <div class="header-section">
+                <i class="bi bi-stethoscope header-bg-icon"></i>
+                <div class="position-relative">
+                    <h3 class="fw-bold mb-1">Dashboard Dokter</h3>
+                    <p class="mb-0 opacity-90 small">
+                        <i class="bi bi-calendar-check me-2"></i><?php echo $hari_praktik; ?> | 
+                        <i class="bi bi-hospital me-2 ms-2"></i><?php echo $poli_layanan_info; ?>
+                    </p>
+                </div>
             </div>
-            
+
             <?php if ($error_message): ?>
-                <div class="alert alert-danger mb-4"><?php echo $error_message; ?></div>
+                <div class="alert alert-danger shadow-sm border-0 mb-4">
+                    <i class="bi bi-exclamation-circle me-2"></i><?php echo $error_message; ?>
+                </div>
             <?php endif; ?>
 
-            <h4 class="mb-4 text-dark fw-bold">🚀 Kinerja Hari Ini (<?php echo date('d F Y', strtotime($today)); ?>)</h4>
-            <div class="row mb-5">
-                <div class="col-xl-4 col-lg-4 col-md-6 mb-4">
-                    <div class="card stat-card bg-success text-dark shadow-sm">
-                        <div class="card-body">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <p class="stat-title mb-1">Pasien Selesai Hari Ini</p>
-                                    <p class="stat-value mb-0 text-success"><?php echo $stats['selesai_hari_ini']; ?></p>
-                                </div>
-                                <i class="bi bi-check-circle-fill fs-1 text-success opacity-75"></i>
+            <div class="row g-3 mb-4">
+                <div class="col-12 col-md-6">
+                    <div class="card stat-card">
+                        <div class="card-body d-flex align-items-center p-3">
+                            <div class="stat-icon bg-soft-success text-success bg-light me-3">
+                                <i class="bi bi-person-check-fill"></i>
+                            </div>
+                            <div>
+                                <div class="stat-title">Pasien Selesai Hari Ini</div>
+                                <div class="stat-value text-success"><?php echo $stats['selesai_hari_ini']; ?></div>
                             </div>
                         </div>
                     </div>
                 </div>
-                <div class="col-xl-4 col-lg-4 col-md-6 mb-4">
-                    <div class="card stat-card bg-primary text-dark shadow-sm">
-                        <div class="card-body">
-                             <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <p class="stat-title mb-1">Total Layanan Tercatat</p>
-                                    <p class="stat-value mb-0 text-primary"><?php echo $stats['total_diagnosa']; ?></p>
-                                </div>
-                                <i class="bi bi-journal-medical fs-1 text-primary opacity-75"></i>
+                <div class="col-12 col-md-6">
+                    <div class="card stat-card">
+                        <div class="card-body d-flex align-items-center p-3">
+                            <div class="stat-icon bg-soft-primary text-primary bg-light me-3">
+                                <i class="bi bi-journal-text"></i>
+                            </div>
+                            <div>
+                                <div class="stat-title">Total Riwayat Diagnosa</div>
+                                <div class="stat-value text-primary"><?php echo $stats['total_diagnosa']; ?></div>
                             </div>
                         </div>
                     </div>
                 </div>
-                <div class="col-xl-4 col-lg-4 col-md-12 mb-4">
-                    <div class="card stat-card bg-info text-dark shadow-sm">
-                        <div class="card-body">
-                             <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <p class="stat-title mb-1">Antrian Aktif Di Poli Anda</p>
-                                    <p class="stat-value mb-0 text-info">
-                                        <?php echo count($antrian_aktif); ?>
-                                    </p>
+                
+                <div class="col-12">
+                    <div class="card stat-card bg-light border-0 shadow-none">
+                        <div class="card-body d-flex flex-column flex-sm-row align-items-center justify-content-between p-3 gap-3">
+                            <div class="d-flex align-items-center">
+                                <div class="stat-icon bg-white text-warning shadow-sm me-3">
+                                    <i class="bi bi-people-fill"></i>
                                 </div>
-                                <i class="bi bi-clock-fill fs-1 text-info opacity-75"></i>
+                                <div>
+                                    <div class="stat-title">Antrian Menunggu / Sedang Diperiksa</div>
+                                    <div class="stat-value text-dark"><?php echo count($antrian_aktif); ?></div>
+                                </div>
                             </div>
+                            <a href="antrian_call.php" class="btn btn-primary shadow-sm px-4 fw-bold w-100 w-sm-auto">
+                                <i class="bi bi-telephone-forward me-2"></i>Kelola Panggilan
+                            </a>
                         </div>
                     </div>
                 </div>
             </div>
             
-            <hr>
-
-            <h3 class="mb-3 text-dark fw-bold">📋 Daftar Antrian Aktif Kerja Anda</h3>
-            <p class="text-muted">Antrian di Poli Anda dengan status Menunggu, Dipanggil, atau Sedang Periksa.</p>
-
-            <?php if (empty($poli_ids_hari_ini)): ?>
-                <div class="alert alert-warning">Anda tidak memiliki jadwal praktik di poli manapun pada hari **<?php echo $hari_praktik; ?>**.</div>
-            <?php elseif (empty($antrian_aktif)): ?>
-                <div class="alert alert-info">Tidak ada antrian aktif (Menunggu/Dipanggil/Sedang Periksa) di Poli Anda hari ini.</div>
-            <?php else: ?>
-                <div class="table-antrian-card">
-                    <div class="table-responsive">
-                        <table class="table table-striped table-hover">
-                            <thead>
-                                <tr>
-                                    <th>Prioritas</th>
-                                    <th>No. Antrian</th>
-                                    <th>Nama Pasien</th>
-                                    <th>Poli</th>
-                                    <th>Status</th>
-                                    <th>Aksi Cepat</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php 
-                                $prioritas = 1;
-                                foreach ($antrian_aktif as $antrian): 
-                                    $status_class = str_replace(' ', '', $antrian['status_antrian']);
-                                    $link_call = "antrian_call.php?antrian_id=" . $antrian['antrian_id']; // Mengarahkan ke halaman call dengan ID spesifik
-                                    $aksi_text = ($antrian['status_antrian'] == 'Sedang Periksa') ? 'Lanjut Layanan' : 'Panggil/Kelola';
-                                    $aksi_icon = ($antrian['status_antrian'] == 'Sedang Periksa') ? 'bi-arrow-right-circle' : 'bi-telephone-fill';
-                                    $aksi_color = ($antrian['status_antrian'] == 'Sedang Periksa') ? 'danger' : 'primary';
-                                ?>
-                                <tr class="antrian-row status-<?php echo $status_class; ?>">
-                                    <td><?php echo $prioritas++; ?></td>
-                                    <td><h5 class="mb-0 fw-bold"><?php echo htmlspecialchars($antrian['nomor_antrian']); ?></h5></td>
-                                    <td><?php echo htmlspecialchars($antrian['nama_pasien']); ?></td>
-                                    <td><?php echo htmlspecialchars($antrian['nama_poli']); ?></td>
-                                    <td><span class="badge bg-<?php echo ($antrian['status_antrian'] == 'Sedang Periksa') ? 'danger' : (($antrian['status_antrian'] == 'Dipanggil') ? 'warning' : 'secondary'); ?>"><?php echo $antrian['status_antrian']; ?></span></td>
-                                    <td>
-                                        <a href="<?php echo $link_call; ?>" class="btn btn-sm btn-<?php echo $aksi_color; ?> btn-aksi-cepat">
-                                            <i class="bi <?php echo $aksi_icon; ?>"></i> <?php echo $aksi_text; ?>
-                                        </a>
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
+            <div class="card border-0 shadow-sm rounded-3">
+                <div class="card-header bg-white border-bottom py-3">
+                    <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-list-task me-2 text-success"></i>Daftar Antrian Aktif</h6>
                 </div>
-                <p class="text-end mt-3"><a href="antrian_call.php" class="btn btn-sm btn-outline-dark fw-bold">Lihat Semua Antrian & Kelola Panggilan <i class="bi bi-arrow-right"></i></a></p>
-            <?php endif; ?>
-            
+                <div class="card-body p-0">
+                    <?php if (empty($poli_ids_hari_ini)): ?>
+                        <div class="p-5 text-center text-muted">
+                            <i class="bi bi-calendar-x display-4 mb-3 d-block opacity-50"></i>
+                            <p class="small mb-0">Tidak ada jadwal praktik hari ini (<strong><?php echo $hari_praktik; ?></strong>).</p>
+                        </div>
+                    <?php elseif (empty($antrian_aktif)): ?>
+                        <div class="p-5 text-center text-muted">
+                            <i class="bi bi-check2-all display-4 mb-3 d-block text-success opacity-50"></i>
+                            <p class="small mb-0">Tidak ada antrian aktif saat ini.</p>
+                        </div>
+                    <?php else: ?>
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0" style="min-width: 800px;">
+                                <thead class="table-light text-secondary small text-uppercase">
+                                    <tr>
+                                        <th class="ps-4">No. Antrian</th>
+                                        <th>Nama Pasien</th>
+                                        <th>Poli</th>
+                                        <th>Status</th>
+                                        <th class="text-center">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($antrian_aktif as $antrian): 
+                                        $link_call = "antrian_call.php?antrian_id=" . $antrian['antrian_id'];
+                                        $btn_color = ($antrian['status_antrian'] == 'Sedang Periksa') ? 'success' : 'primary';
+                                        $btn_text = ($antrian['status_antrian'] == 'Sedang Periksa') ? 'Lanjut' : 'Panggil';
+                                        $btn_icon = ($antrian['status_antrian'] == 'Sedang Periksa') ? 'bi-stethoscope' : 'bi-megaphone-fill';
+                                    ?>
+                                    <tr class="<?php echo ($antrian['status_antrian'] == 'Dipanggil') ? 'table-warning' : (($antrian['status_antrian'] == 'Sedang Periksa') ? 'table-success' : ''); ?>">
+                                        <td class="ps-4">
+                                            <span class="badge bg-white text-dark border border-secondary fs-6">
+                                                <?php echo htmlspecialchars($antrian['nomor_antrian']); ?>
+                                            </span>
+                                        </td>
+                                        <td class="fw-bold text-dark"><?php echo htmlspecialchars($antrian['nama_pasien']); ?></td>
+                                        <td><?php echo htmlspecialchars($antrian['nama_poli']); ?></td>
+                                        <td>
+                                            <span class="badge rounded-pill bg-<?php echo ($antrian['status_antrian'] == 'Sedang Periksa') ? 'success' : (($antrian['status_antrian'] == 'Dipanggil') ? 'warning text-dark' : 'secondary'); ?>">
+                                                <?php echo $antrian['status_antrian']; ?>
+                                            </span>
+                                        </td>
+                                        <td class="text-center">
+                                            <a href="<?php echo $link_call; ?>" class="btn btn-sm btn-<?php echo $btn_color; ?> shadow-sm">
+                                                <i class="bi <?php echo $btn_icon; ?> me-1"></i> <?php echo $btn_text; ?>
+                                            </a>
+                                        </td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+
         </div>
         
-        <footer class="footer mt-auto py-3">
-            <div class="container-fluid text-center">
-                <span class="text-muted small">&copy; <?php echo date("Y"); ?> RS Jiwa. Hak Cipta Dilindungi.</span>
-            </div>
+        <footer class="mt-auto py-3 bg-white text-center border-top">
+            <span class="text-muted small">&copy; <?php echo date("Y"); ?> RS Jiwa.</span>
         </footer>
-        
     </div>
-    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    // Toggle sidebar script
     document.addEventListener('DOMContentLoaded', function() {
         var sidebarToggle = document.getElementById('sidebarToggle');
         var wrapper = document.getElementById('wrapper');
+        var backdrop = document.getElementById('overlay-backdrop');
+
+        // Fungsi Toggle Sidebar
+        function toggleSidebar() {
+            wrapper.classList.toggle('toggled');
+        }
 
         sidebarToggle.addEventListener('click', function(e) {
             e.preventDefault();
-            wrapper.classList.toggle('toggled');
+            toggleSidebar();
         });
 
-        // Logika untuk memastikan sidebar tertutup di ponsel secara default, 
-        // dan terbuka di desktop.
-        function checkViewport() {
+        // Tutup sidebar jika backdrop diklik (khusus mobile)
+        backdrop.addEventListener('click', function() {
             if (window.innerWidth < 992) {
-                // Di bawah desktop, sidebar tersembunyi
-                wrapper.classList.add('toggled');
-            } else {
-                // Di desktop, sidebar ditampilkan
                 wrapper.classList.remove('toggled');
             }
-        }
-
-        window.addEventListener('resize', checkViewport);
-        checkViewport(); // Panggil saat pemuatan
+        });
     });
 </script>
 </body>
