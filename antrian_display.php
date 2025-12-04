@@ -235,7 +235,7 @@ $waiting_data_json = json_encode($waiting_grouped);
                         <i class="bi bi-hospital-fill text-primary fs-1"></i>
                     </div>
                     <div>
-                        <h1 class="display-title mb-0">RS JIWA</h1>
+                        <h1 class="display-title mb-0">RS JIWA GraSHia</h1>
                         <p class="mb-0 fw-light opacity-75" style="letter-spacing: 2px;">SISTEM INFORMASI ANTRIAN TERPADU</p>
                     </div>
                 </div>

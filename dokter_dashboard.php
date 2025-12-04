@@ -132,12 +132,12 @@ if (!empty($poli_ids_hari_ini)) {
     }
 }
 
-// Menu items untuk Sidebar
+// --- PERUBAHAN DI SINI: Menu "Rekam Medis" Dihapus ---
 $menu_items = [
     [ 'title' => 'Dashboard Dokter', 'icon' => 'bi-house-door-fill', 'link' => 'dokter_dashboard.php', 'active' => true ],
     [ 'title' => 'Monitor Antrian', 'icon' => 'bi-telephone-fill', 'link' => 'antrian_call.php', 'active' => false ],
-    [ 'title' => 'Rekam Medis', 'icon' => 'bi-journal-medical', 'link' => 'rekam_medis.php', 'active' => false ],
 ];
+// ----------------------------------------------------
 
 mysqli_close($conn);
 ?>
